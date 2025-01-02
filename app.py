@@ -55,17 +55,25 @@ else:
                 stage = deliverable.get("stage", "Unknown Stage")
                 policies[policy_name][stage] += 1
 
-            st.write(f"**Total Policies:** {len(policies)}")
-            st.write(f"**Total Bundles:** {total_bundles}")
+            total_policies = len(policies)
 
-            # Display bundles by policy and stage
+            # Display Total Counters
+            col1, col2 = st.columns(2)
+            with col1:
+                st.metric(label="Total Policies", value=total_policies)
+            with col2:
+                st.metric(label="Total Bundles", value=total_bundles)
+
+            # Bundles by Policy and Stage
             st.write("### Bundles by Policy and Stage")
-            for policy_name, stages in policies.items():
-                st.subheader(policy_name)
-                for stage, count in stages.items():
-                    st.write(f"- **{stage}:** {count} bundles")
+            if policies:
+                for policy_name, stages in policies.items():
+                    st.subheader(policy_name)
+                    for stage, count in stages.items():
+                        st.write(f"- **{stage}:** {count} bundles")
+            else:
+                st.write("No data available for policies and stages.")
 
-            # Hide "Fetching deliverables..." after data is loaded
             st.write("---")
 
             # Detailed Deliverables Section
