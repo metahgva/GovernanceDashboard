@@ -115,6 +115,9 @@ else:
                 project_name = deliverable.get("projectName", "Unnamed Project")
                 project_owner = deliverable.get("projectOwner", "Unknown Project Owner")
                 bundle_owner = f"{deliverable.get('createdBy', {}).get('firstName', 'Unknown')} {deliverable.get('createdBy', {}).get('lastName', 'Unknown')}"
+                bundle_id = deliverable.get("id", "")
+                policy_id = deliverable.get("policyId", "")
+                bundle_link = f"{API_HOST}/u/{project_owner}/{project_name}/governance/bundle/{bundle_id}/policy/{policy_id}/evidence"
                 targets = deliverable.get("targets", [])
 
                 # Group attachments by type
@@ -133,6 +136,7 @@ else:
 
                 # Display bundle details
                 st.subheader(f"{bundle_name}")
+                st.markdown(f"[View Bundle Details]({bundle_link})", unsafe_allow_html=True)
                 st.write(f"**Status:** {status}")
                 st.write(f"**Policy Name:** {policy_name}")
                 st.write(f"**Stage:** {stage}")
