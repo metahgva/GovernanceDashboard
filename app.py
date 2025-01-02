@@ -87,3 +87,56 @@ else:
                                 f"{API_HOST}/u/{project_owner}/{project_name}/governance/bundle/{bundle_id}/policy/{policy_id}/evidence"
                             )
                             st.markdown(f"- [{bundle_name}]({bundle_link})", unsafe_allow_html=True)
+            
+            # Detailed Deliverables Section
+            st.write("---")
+            st.markdown(
+                """
+                <div style="padding: 20px; border: 3px solid #4A90E2; border-radius: 10px; background-color: #F5F8FA;">
+                    <h2 style="color: #4A90E2; text-align: center;">Governed Bundles</h2>
+                </div>
+                """,
+                unsafe_allow_html=True,
+            )
+            for deliverable in deliverables:
+                # Extract details
+                bundle_name = deliverable.get("name", "Unnamed Bundle")
+                status = deliverable.get("state", "Unknown")
+                policy_name = deliverable.get("policyName", "Unknown")
+                stage = deliverable.get("stage", "Unknown")
+                project_name = deliverable.get("projectName", "Unnamed Project")
+                project_owner = deliverable.get("projectOwner", "Unknown Project Owner")
+                bundle_owner = f"{deliverable.get('createdBy', {}).get('firstName', 'Unknown')} {deliverable.get('createdBy', {}).get('lastName', 'Unknown')}"
+                targets = deliverable.get("targets", [])
+
+                # Group attachments by type
+                attachment_details = {}
+                for target in targets:
+                    attachment_type = target.get("type", "Unknown")
+                    if attachment_type == "ModelVersion":
+                        model_name = target.get("identifier", {}).get("name", "Unnamed Model")
+                        model_version = target.get("identifier", {}).get("version", "Unknown Version")
+                        attachment_name = f"{model_name} (Version: {model_version})"
+                    else:
+                        attachment_name = target.get("identifier", {}).get("filename", "Unnamed Attachment")
+                    if attachment_type not in attachment_details:
+                        attachment_details[attachment_type] = []
+                    attachment_details[attachment_type].append(attachment_name)
+
+                
+                # Display bundle details
+                st.subheader(f"{bundle_name}")
+                st.write(f"**Status:** {status}")
+                st.write(f"**Policy Name:** {policy_name}")
+                st.write(f"**Stage:** {stage}")
+                st.write(f"**Project Name:** {project_name}")
+                st.write(f"**Project Owner:** {project_owner}")
+                st.write(f"**Bundle Owner:** {bundle_owner}")
+
+                # Attachments in collapsible sections
+                st.write("**Attachments by Type:**")
+                for attachment_type, names in attachment_details.items():
+                    with st.expander(f"{attachment_type} ({len(names)} items)"):
+                        for name in names:
+                            st.write(f"- {name}")
+                st.write("---")
