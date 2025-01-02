@@ -33,18 +33,6 @@ def fetch_deliverables():
         st.error(f"An error occurred: {e}")
         return None
 
-# Custom HTML styling for metrics
-def styled_metric(label, value, key):
-    st.markdown(
-        f"""
-        <div style="border: 2px solid #4A90E2; border-radius: 10px; padding: 15px; background-color: #FFFFFF; text-align: center; margin-bottom: 15px; cursor: pointer;" onclick="window.location.hash='{key}'">
-            <h4 style="margin: 0; color: #4A90E2;">{label}</h4>
-            <p style="font-size: 24px; margin: 0; font-weight: bold; color: #333333;">{value}</p>
-        </div>
-        """,
-        unsafe_allow_html=True,
-    )
-
 # Fetch deliverables
 if not API_KEY:
     st.error("API Key is missing. Set the environment variable and restart the app.")
@@ -60,7 +48,7 @@ else:
             for bundle in deliverables:
                 policy_name = bundle.get("policyName", "No Policy Name")
                 bundle_stage = bundle.get("stage", "No Stage")
-                bundles_per_policy_stage[policy_name][bundle_stage].append(bundle)
+                bundles_per_policy_stage[policy_name][bundle_stage].append(bundle.get("name", "Unnamed Bundle"))
 
             # Distinct Summary Section
             st.write("---")
@@ -78,27 +66,21 @@ else:
 
             col1, col2 = st.columns(2)
             with col1:
-                styled_metric("Total Policies", total_policies, "total-policies")
+                st.metric("Total Policies", total_policies)
             with col2:
-                styled_metric("Total Bundles", total_bundles, "total-bundles")
+                st.metric("Total Bundles", total_bundles)
 
-            # Bundles by Policy and Stage Counters
+            # Bundles by Policy and Stage Counters with Toggle
             st.write("### Bundles by Policy and Stage")
             for policy_name, stages in bundles_per_policy_stage.items():
                 st.markdown(f"#### <span style='font-size:16px; color:#4A90E2;'>{policy_name}</span>", unsafe_allow_html=True)
-                col_count = 0
-                col_container = st.columns(3)
                 for stage, bundles in stages.items():
-                    with col_container[col_count % 3]:
-                        if st.button(f"{stage} ({len(bundles)})", key=f"{policy_name}-{stage}"):
-                            # Show details of the bundles in this stage
-                            st.markdown(f"### {stage} - Details")
-                            for bundle in bundles:
-                                st.write(f"- **Bundle Name:** {bundle.get('name', 'Unnamed Bundle')}")
-                                st.write(f"  **Created At:** {bundle.get('createdAt', 'Unknown')}")
-                                st.write(f"  **State:** {bundle.get('state', 'Unknown')}")
-                                st.write("---")
-                    col_count += 1
+                    stage_key = f"{policy_name}-{stage}"
+                    if st.checkbox(f"{stage} ({len(bundles)})", key=stage_key):
+                        # Show list of bundle names for this stage
+                        st.write("**Bundles:**")
+                        for bundle_name in bundles:
+                            st.write(f"- {bundle_name}")
 
             # Detailed Deliverables Section
             st.write("---")
