@@ -54,31 +54,22 @@ else:
                 bundles_by_stage[bundle.get("stage", "Unknown")] += 1
                 bundles_by_status[bundle.get("state", "Unknown")] += 1
 
+            # Summary Section with Metrics
             st.markdown("---")
             st.header("Summary")
-            col1, col2, col3 = st.columns(3)
-            with col1:
-                st.metric("Total Policies", total_policies)
-            with col2:
-                st.metric("Total Bundles", total_bundles)
-            with col3:
-                st.metric("Total Stages", len(bundles_by_stage))
+            cols = st.columns(4)  # Create 4 evenly spaced columns for metrics
+            cols[0].metric("Total Policies", total_policies)
+            cols[1].metric("Total Bundles", total_bundles)
 
-            # Bundles by Stage
-            st.markdown("---")
-            st.subheader("Bundles by Stage")
-            col1, col2 = st.columns(2)
-            with col1:
-                for stage, count in bundles_by_stage.items():
-                    st.metric(stage, count)
+            # Bundles by Stage as Metrics
+            stage_metrics = list(bundles_by_stage.items())
+            for i, (stage, count) in enumerate(stage_metrics):
+                cols[(i + 2) % 4].metric(stage, count)  # Start placing after Total Bundles
 
-            # Bundles by Status
-            st.markdown("---")
-            st.subheader("Bundles by Status")
-            col3, col4 = st.columns(2)
-            with col3:
-                for status, count in bundles_by_status.items():
-                    st.metric(status, count)
+            # Bundles by Status as Metrics
+            status_metrics = list(bundles_by_status.items())
+            for i, (status, count) in enumerate(status_metrics):
+                cols[(i + len(stage_metrics) + 2) % 4].metric(status, count)
 
             # Display bundles by policy and stage
             st.markdown("---")
@@ -112,7 +103,7 @@ else:
                             )
                             st.markdown(f"- [{bundle_name}]({bundle_link})", unsafe_allow_html=True)
 
-            # Detailed Deliverables Section (Consistent with Summary)
+            # Detailed Deliverables Section
             st.write("---")
             st.header("Governed Bundles")
             for deliverable in deliverables:
