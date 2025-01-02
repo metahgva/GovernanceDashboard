@@ -49,11 +49,21 @@ else:
 
             st.markdown("---")
             st.header("Summary")
-            col1, col2 = st.columns(2)
-            with col1:
-                st.metric("Total Policies", total_policies)
-            with col2:
-                st.metric("Total Bundles", total_bundles)
+            st.markdown(
+                f"""
+                <div style="display: flex; justify-content: space-around; padding: 10px; background-color: #f5f8fa; border: 2px solid #4A90E2; border-radius: 10px;">
+                    <div style="text-align: center;">
+                        <h3 style="color: #4A90E2;">Total Policies</h3>
+                        <p style="font-size: 24px; font-weight: bold;">{total_policies}</p>
+                    </div>
+                    <div style="text-align: center;">
+                        <h3 style="color: #4A90E2;">Total Bundles</h3>
+                        <p style="font-size: 24px; font-weight: bold;">{total_bundles}</p>
+                    </div>
+                </div>
+                """,
+                unsafe_allow_html=True,
+            )
 
             # Group bundles by policy and stage
             bundles_per_policy_stage = defaultdict(lambda: defaultdict(list))
@@ -70,7 +80,6 @@ else:
                     (bundle.get("policyId") for bundle in deliverables if bundle.get("policyName") == policy_name),
                     "unknown",
                 )
-                # Corrected policy deep link
                 policy_link = f"{API_HOST}/governance/policy/{policy_id}/editor"
                 st.subheader(f"Policy: {policy_name}")
                 st.markdown(f"[View Policy]({policy_link})", unsafe_allow_html=True)
@@ -82,12 +91,11 @@ else:
                             bundle_id = bundle.get("id", "")
                             project_owner = bundle.get("projectOwner", "unknown_user")
                             project_name = bundle.get("projectName", "unknown_project")
-                            # Corrected bundle deep link
                             bundle_link = (
                                 f"{API_HOST}/u/{project_owner}/{project_name}/governance/bundle/{bundle_id}/policy/{policy_id}/evidence"
                             )
                             st.markdown(f"- [{bundle_name}]({bundle_link})", unsafe_allow_html=True)
-            
+
             # Detailed Deliverables Section
             st.write("---")
             st.markdown(
@@ -107,9 +115,11 @@ else:
                 project_name = deliverable.get("projectName", "Unnamed Project")
                 project_owner = deliverable.get("projectOwner", "Unknown Project Owner")
                 bundle_owner = f"{deliverable.get('createdBy', {}).get('firstName', 'Unknown')} {deliverable.get('createdBy', {}).get('lastName', 'Unknown')}"
-                targets = deliverable.get("targets", [])
+                bundle_id = deliverable.get("id", "")
+                policy_id = deliverable.get("policyId", "")
+                bundle_link = f"{API_HOST}/u/{project_owner}/{project_name}/governance/bundle/{bundle_id}/policy/{policy_id}/evidence"
 
-                # Group attachments by type
+                targets = deliverable.get("targets", [])
                 attachment_details = {}
                 for target in targets:
                     attachment_type = target.get("type", "Unknown")
@@ -123,7 +133,6 @@ else:
                         attachment_details[attachment_type] = []
                     attachment_details[attachment_type].append(attachment_name)
 
-                
                 # Display bundle details
                 st.subheader(f"{bundle_name}")
                 st.write(f"**Status:** {status}")
@@ -132,6 +141,7 @@ else:
                 st.write(f"**Project Name:** {project_name}")
                 st.write(f"**Project Owner:** {project_owner}")
                 st.write(f"**Bundle Owner:** {bundle_owner}")
+                st.markdown(f"[View Bundle Details]({bundle_link})", unsafe_allow_html=True)
 
                 # Attachments in collapsible sections
                 st.write("**Attachments by Type:**")
