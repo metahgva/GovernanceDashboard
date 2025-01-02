@@ -4,7 +4,7 @@ import os
 from collections import defaultdict
 
 # Load API Host and Key from environment variables or fallback values
-API_HOST = os.getenv("API_HOST", "https://se-demo.domino.tech/")
+API_HOST = os.getenv("API_HOST", "https://se-demo.domino.tech")
 API_KEY = os.getenv("API_KEY", "2627b46253dfea3a329b8c5b84748b98d5b3c5ffe6eb02a55f7177231fc8c1c4")
 
 # Streamlit app title
@@ -70,6 +70,7 @@ else:
                     (bundle.get("policyId") for bundle in deliverables if bundle.get("policyName") == policy_name),
                     "unknown",
                 )
+                # Corrected policy deep link
                 policy_link = f"{API_HOST}/governance/policy/{policy_id}/editor"
                 st.subheader(f"Policy: {policy_name}")
                 st.markdown(f"[View Policy]({policy_link})", unsafe_allow_html=True)
@@ -81,7 +82,7 @@ else:
                             bundle_id = bundle.get("id", "")
                             project_owner = bundle.get("projectOwner", "unknown_user")
                             project_name = bundle.get("projectName", "unknown_project")
-                            policy_id = bundle.get("policyId", "")
+                            # Corrected bundle deep link
                             bundle_link = (
                                 f"{API_HOST}/u/{project_owner}/{project_name}/governance/bundle/{bundle_id}/policy/{policy_id}/evidence"
                             )
