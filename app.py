@@ -47,18 +47,19 @@ else:
             total_policies = len(set(bundle.get("policyName", "No Policy Name") for bundle in deliverables))
             total_bundles = len(deliverables)
 
+            # Summary section with improved visibility
             st.markdown("---")
             st.header("Summary")
             st.markdown(
                 f"""
-                <div style="display: flex; justify-content: space-around; padding: 10px; background-color: #f5f8fa; border: 2px solid #4A90E2; border-radius: 10px;">
+                <div style="display: flex; justify-content: space-around; padding: 20px; background-color: #F5F8FA; border: 2px solid #4A90E2; border-radius: 10px;">
                     <div style="text-align: center;">
                         <h3 style="color: #4A90E2;">Total Policies</h3>
-                        <p style="font-size: 24px; font-weight: bold;">{total_policies}</p>
+                        <p style="font-size: 28px; font-weight: bold; color: #333;">{total_policies}</p>
                     </div>
                     <div style="text-align: center;">
                         <h3 style="color: #4A90E2;">Total Bundles</h3>
-                        <p style="font-size: 24px; font-weight: bold;">{total_bundles}</p>
+                        <p style="font-size: 28px; font-weight: bold; color: #333;">{total_bundles}</p>
                     </div>
                 </div>
                 """,
