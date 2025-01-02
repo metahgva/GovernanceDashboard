@@ -33,13 +33,13 @@ def fetch_deliverables():
         st.error(f"An error occurred: {e}")
         return None
 
-# Custom HTML styling for metrics with borders
+# Custom HTML styling for metrics with better contrast
 def styled_metric(label, value):
     st.markdown(
         f"""
-        <div style="border: 2px solid #0284c7; border-radius: 10px; padding: 15px; background-color: #f0f9ff; text-align: center; margin-bottom: 15px;">
-            <h3 style="margin: 0; color: #0284c7;">{label}</h3>
-            <p style="font-size: 28px; margin: 0; font-weight: bold;">{value}</p>
+        <div style="border: 2px solid #4A90E2; border-radius: 10px; padding: 15px; background-color: #FFFFFF; text-align: center; margin-bottom: 15px;">
+            <h4 style="margin: 0; color: #4A90E2;">{label}</h4>
+            <p style="font-size: 24px; margin: 0; font-weight: bold; color: #333333;">{value}</p>
         </div>
         """,
         unsafe_allow_html=True,
@@ -66,8 +66,8 @@ else:
             st.write("---")
             st.markdown(
                 """
-                <div style="padding: 20px; border: 3px solid #0284c7; border-radius: 10px; background-color: #e6f7ff;">
-                    <h2 style="color: #0284c7; text-align: center;">Summary</h2>
+                <div style="padding: 20px; border: 3px solid #4A90E2; border-radius: 10px; background-color: #F5F8FA;">
+                    <h2 style="color: #4A90E2; text-align: center;">Summary</h2>
                 </div>
                 """,
                 unsafe_allow_html=True,
@@ -85,7 +85,7 @@ else:
             # Bundles by Policy and Stage Counters
             st.write("### Bundles by Policy and Stage")
             for policy_name, stages in bundles_per_policy_stage.items():
-                st.subheader(policy_name)
+                st.subheader(f"**{policy_name}**")
                 col_count = 0
                 col_container = st.columns(3)
                 for stage, count in stages.items():
