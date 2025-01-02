@@ -1,30 +1,29 @@
 import streamlit as st
 import requests
-import json
 import os
 
-# Load API Host and Key from environment variables
+# Load API Host and Key from environment variables or fallback values
 API_HOST = os.getenv("API_HOST", "https://se-demo.domino.tech/")
 API_KEY = os.getenv("API_KEY", "2627b46253dfea3a329b8c5b84748b98d5b3c5ffe6eb02a55f7177231fc8c1c4")
 
-# Streamlit app title
+# Streamlit app title and branding
 st.title("Deliverables Dashboard")
+#st.sidebar.image("https://example.com/logo.png", use_column_width=True)  # Replace with your logo URL
+st.sidebar.header("Powered by Domino Data Lab")
 
-# Sidebar information (no manual input needed)
+# Sidebar information
 st.sidebar.header("API Configuration")
 st.sidebar.write(f"API Host: {API_HOST}")
-st.sidebar.write(f"API Key: {API_KEY}")
+st.sidebar.write(f"API Key: {API_KEY[:5]}{'*' * (len(API_KEY) - 5)}")  # Masked for security
 if not API_KEY:
     st.sidebar.error("API Key is not set. Please configure the environment variable.")
 
-# Button to fetch deliverables
-fetch_data = st.sidebar.button("Fetch Deliverables")
-
 # Function to fetch deliverables from the API
+@st.cache_data
 def fetch_deliverables():
     try:
-        # API request
-        response = requests.get(f"{API_HOST}/guardrails/v1/deliverables",auth=(API_KEY,API_KEY))
+        headers = {"Authorization": f"Bearer {API_KEY}"}
+        response = requests.get(f"{API_HOST}/guardrails/v1/deliverables", headers=headers)
         if response.status_code != 200:
             st.error(f"Error: {response.status_code} - {response.text}")
             return None
@@ -33,18 +32,19 @@ def fetch_deliverables():
         st.error(f"An error occurred: {e}")
         return None
 
-# Fetch and display deliverables
-if fetch_data:
-    if not API_KEY:
-        st.error("API Key is missing. Set the environment variable and restart the app.")
-    else:
-        st.write("Fetching deliverables...")
-        data = fetch_deliverables()
-        if data:
-            deliverables = data.get("data", [])
-            # Display deliverables (same as before)
+# Fetch deliverables on startup
+if not API_KEY:
+    st.error("API Key is missing. Set the environment variable and restart the app.")
+else:
+    st.write("Fetching deliverables...")
+    data = fetch_deliverables()
+    if data:
+        deliverables = data.get("data", [])
+        if not deliverables:
+            st.warning("No deliverables found.")
+        else:
             for deliverable in deliverables:
-                # Extract details and display
+                # Extract details
                 bundle_name = deliverable.get("name", "Unnamed Bundle")
                 status = deliverable.get("state", "Unknown")
                 policy_name = deliverable.get("policyName", "Unknown")
@@ -53,7 +53,8 @@ if fetch_data:
                 project_owner = deliverable.get("projectOwner", "Unknown Project Owner")
                 bundle_owner = f"{deliverable.get('createdBy', {}).get('firstName', 'Unknown')} {deliverable.get('createdBy', {}).get('lastName', 'Unknown')}"
                 targets = deliverable.get("targets", [])
-                # Group attachments by type and list details
+
+                # Group attachments by type
                 attachment_details = {}
                 for target in targets:
                     attachment_type = target.get("type", "Unknown")
@@ -66,6 +67,7 @@ if fetch_data:
                     if attachment_type not in attachment_details:
                         attachment_details[attachment_type] = []
                     attachment_details[attachment_type].append(attachment_name)
+
                 # Display bundle details
                 st.subheader(f"Bundle: {bundle_name}")
                 st.write(f"**Status:** {status}")
@@ -74,10 +76,20 @@ if fetch_data:
                 st.write(f"**Project Name:** {project_name}")
                 st.write(f"**Project Owner:** {project_owner}")
                 st.write(f"**Bundle Owner:** {bundle_owner}")
-                # Attachments
+
+                # Attachments in collapsible sections
                 st.write("**Attachments by Type:**")
                 for attachment_type, names in attachment_details.items():
-                    st.write(f"- **{attachment_type}:**")
-                    for name in names:
-                        st.write(f"  - {name}")
+                    with st.expander(f"{attachment_type} ({len(names)} items)"):
+                        for name in names:
+                            st.write(f"- {name}")
                 st.write("---")
+
+# Footer
+st.sidebar.markdown(
+    """
+    ---
+    **Deliverables Dashboard**  
+    Powered by [Domino Data Lab](https://www.dominodatalab.com)
+    """
+)
