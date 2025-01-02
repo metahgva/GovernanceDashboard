@@ -6,10 +6,8 @@ import os
 API_HOST = os.getenv("API_HOST", "https://se-demo.domino.tech/")
 API_KEY = os.getenv("API_KEY", "2627b46253dfea3a329b8c5b84748b98d5b3c5ffe6eb02a55f7177231fc8c1c4")
 
-# Streamlit app title and branding
+# Streamlit app title
 st.title("Deliverables Dashboard")
-#st.sidebar.image("https://example.com/logo.png", use_column_width=True)  # Replace with your logo URL
-st.sidebar.header("Powered by Domino Data Lab")
 
 # Sidebar information
 st.sidebar.header("API Configuration")
@@ -22,8 +20,10 @@ if not API_KEY:
 @st.cache_data
 def fetch_deliverables():
     try:
-        headers = {"Authorization": f"Bearer {API_KEY}"}
-        response = requests.get(f"{API_HOST}/guardrails/v1/deliverables", headers=headers)
+        response = requests.get(
+            f"{API_HOST}/guardrails/v1/deliverables",
+            auth=(API_KEY, API_KEY),
+        )
         if response.status_code != 200:
             st.error(f"Error: {response.status_code} - {response.text}")
             return None
@@ -84,12 +84,3 @@ else:
                         for name in names:
                             st.write(f"- {name}")
                 st.write("---")
-
-# Footer
-st.sidebar.markdown(
-    """
-    ---
-    **Deliverables Dashboard**  
-    Powered by [Domino Data Lab](https://www.dominodatalab.com)
-    """
-)
