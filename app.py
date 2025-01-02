@@ -37,9 +37,9 @@ def fetch_deliverables():
 def styled_metric(label, value):
     st.markdown(
         f"""
-        <div style="border: 1px solid #ddd; border-radius: 5px; padding: 10px; text-align: center; margin-bottom: 10px;">
-            <h3 style="margin: 0; color: #444;">{label}</h3>
-            <p style="font-size: 24px; margin: 0; font-weight: bold;">{value}</p>
+        <div style="border: 2px solid #0284c7; border-radius: 10px; padding: 15px; background-color: #f0f9ff; text-align: center; margin-bottom: 15px;">
+            <h3 style="margin: 0; color: #0284c7;">{label}</h3>
+            <p style="font-size: 28px; margin: 0; font-weight: bold;">{value}</p>
         </div>
         """,
         unsafe_allow_html=True,
@@ -62,11 +62,20 @@ else:
                 bundle_stage = bundle.get("stage", "No Stage")
                 bundles_per_policy_stage[policy_name][bundle_stage] += 1
 
-            # Display Total Counters
+            # Distinct Summary Section
+            st.write("---")
+            st.markdown(
+                """
+                <div style="padding: 20px; border: 3px solid #0284c7; border-radius: 10px; background-color: #e6f7ff;">
+                    <h2 style="color: #0284c7; text-align: center;">Summary</h2>
+                </div>
+                """,
+                unsafe_allow_html=True,
+            )
+
             total_bundles = len(deliverables)
             total_policies = len(bundles_per_policy_stage)
 
-            st.header("Summary")
             col1, col2 = st.columns(2)
             with col1:
                 styled_metric("Total Policies", total_policies)
