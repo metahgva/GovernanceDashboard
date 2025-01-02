@@ -43,21 +43,21 @@ else:
         if not deliverables:
             st.warning("No deliverables found.")
         else:
-            # Summary Section
-            st.header("Summary")
-
-            # Count of policies and bundles
-            total_bundles = len(deliverables)
-            policies = defaultdict(lambda: defaultdict(int))
-
-            for deliverable in deliverables:
-                policy_name = deliverable.get("policyName", "Unknown Policy")
-                stage = deliverable.get("stage", "Unknown Stage")
-                policies[policy_name][stage] += 1
-
-            total_policies = len(policies)
+            # Group bundles by policy and stage with detailed information
+            bundles_per_policy_stage = defaultdict(lambda: defaultdict(list))
+            for bundle in deliverables:
+                policy_name = bundle.get("policyName", "No Policy Name")
+                bundle_stage = bundle.get("stage", "No Stage")
+                bundle_details = {
+                    "name": bundle.get("name", "Unnamed Bundle"),
+                    "createdAt": bundle.get("createdAt", "Unknown Date"),
+                    "state": bundle.get("state", "Unknown State"),
+                }
+                bundles_per_policy_stage[policy_name][bundle_stage].append(bundle_details)
 
             # Display Total Counters
+            total_bundles = len(deliverables)
+            total_policies = len(bundles_per_policy_stage)
             col1, col2 = st.columns(2)
             with col1:
                 st.metric(label="Total Policies", value=total_policies)
@@ -66,14 +66,15 @@ else:
 
             # Bundles by Policy and Stage
             st.write("### Bundles by Policy and Stage")
-            if policies:
-                for policy_name, stages in policies.items():
-                    st.subheader(policy_name)
-                    for stage, count in stages.items():
-                        st.write(f"- **{stage}:** {count} bundles")
-            else:
-                st.write("No data available for policies and stages.")
-
+            for policy_name, stages in bundles_per_policy_stage.items():
+                st.subheader(policy_name)
+                for stage, bundles in stages.items():
+                    st.write(f"**Stage:** {stage} ({len(bundles)} bundles)")
+                    for bundle in bundles:
+                        st.write(f"- **Bundle Name:** {bundle['name']}")
+                        st.write(f"  - **Created At:** {bundle['createdAt']}")
+                        st.write(f"  - **State:** {bundle['state']}")
+                    st.write("---")
             st.write("---")
 
             # Detailed Deliverables Section
