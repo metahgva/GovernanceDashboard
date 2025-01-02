@@ -24,10 +24,7 @@ fetch_data = st.sidebar.button("Fetch Deliverables")
 def fetch_deliverables():
     try:
         # API request
-        response = requests.get(
-            f"{API_HOST}/guardrails/v1/deliverables",
-            headers={"Authorization": f"Bearer {API_KEY}"},
-        )
+        response = requests.get(f"{API_HOST}/guardrails/v1/deliverables",auth=(API_KEY,API_KEY))
         if response.status_code != 200:
             st.error(f"Error: {response.status_code} - {response.text}")
             return None
