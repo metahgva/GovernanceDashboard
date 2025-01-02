@@ -1,6 +1,7 @@
 import streamlit as st
 import requests
 import os
+from collections import defaultdict
 
 # Load API Host and Key from environment variables or fallback values
 API_HOST = os.getenv("API_HOST", "https://se-demo.domino.tech/")
@@ -32,17 +33,42 @@ def fetch_deliverables():
         st.error(f"An error occurred: {e}")
         return None
 
-# Fetch deliverables on startup
+# Fetch deliverables
 if not API_KEY:
     st.error("API Key is missing. Set the environment variable and restart the app.")
 else:
-    st.write("Fetching deliverables...")
     data = fetch_deliverables()
     if data:
         deliverables = data.get("data", [])
         if not deliverables:
             st.warning("No deliverables found.")
         else:
+            # Summary Section
+            st.header("Summary")
+
+            # Count of policies and bundles
+            total_bundles = len(deliverables)
+            policies = defaultdict(lambda: defaultdict(int))
+
+            for deliverable in deliverables:
+                policy_name = deliverable.get("policyName", "Unknown Policy")
+                stage = deliverable.get("stage", "Unknown Stage")
+                policies[policy_name][stage] += 1
+
+            st.write(f"**Total Policies:** {len(policies)}")
+            st.write(f"**Total Bundles:** {total_bundles}")
+
+            # Display bundles by policy and stage
+            st.write("### Bundles by Policy and Stage")
+            for policy_name, stages in policies.items():
+                st.subheader(policy_name)
+                for stage, count in stages.items():
+                    st.write(f"- **{stage}:** {count} bundles")
+
+            # Hide "Fetching deliverables..." after data is loaded
+            st.write("---")
+
+            # Detailed Deliverables Section
             for deliverable in deliverables:
                 # Extract details
                 bundle_name = deliverable.get("name", "Unnamed Bundle")
