@@ -10,4 +10,5 @@ echo "port = 8888" >> ~/.streamlit/config.toml
 echo "enableCORS = false" >> ~/.streamlit/config.toml
 echo "enableXsrfProtection = false" >> ~/.streamlit/config.toml
  
-streamlit run app.py
+export PYTHONPATH=$(pwd):$PYTHONPATH
+streamlit run app.py --server.port 8888
