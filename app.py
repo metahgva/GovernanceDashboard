@@ -33,6 +33,18 @@ def fetch_deliverables():
         st.error(f"An error occurred: {e}")
         return None
 
+# Custom HTML styling for metrics with borders
+def styled_metric(label, value):
+    st.markdown(
+        f"""
+        <div style="border: 1px solid #ddd; border-radius: 5px; padding: 10px; text-align: center; margin-bottom: 10px;">
+            <h3 style="margin: 0; color: #444;">{label}</h3>
+            <p style="font-size: 24px; margin: 0; font-weight: bold;">{value}</p>
+        </div>
+        """,
+        unsafe_allow_html=True,
+    )
+
 # Fetch deliverables
 if not API_KEY:
     st.error("API Key is missing. Set the environment variable and restart the app.")
@@ -43,39 +55,35 @@ else:
         if not deliverables:
             st.warning("No deliverables found.")
         else:
-            # Group bundles by policy and stage with detailed information
-            bundles_per_policy_stage = defaultdict(lambda: defaultdict(list))
+            # Group bundles by policy and stage with counts
+            bundles_per_policy_stage = defaultdict(lambda: defaultdict(int))
             for bundle in deliverables:
                 policy_name = bundle.get("policyName", "No Policy Name")
                 bundle_stage = bundle.get("stage", "No Stage")
-                bundle_details = {
-                    "name": bundle.get("name", "Unnamed Bundle"),
-                    "createdAt": bundle.get("createdAt", "Unknown Date"),
-                    "state": bundle.get("state", "Unknown State"),
-                }
-                bundles_per_policy_stage[policy_name][bundle_stage].append(bundle_details)
+                bundles_per_policy_stage[policy_name][bundle_stage] += 1
 
             # Display Total Counters
             total_bundles = len(deliverables)
             total_policies = len(bundles_per_policy_stage)
+
+            st.header("Summary")
             col1, col2 = st.columns(2)
             with col1:
-                st.metric(label="Total Policies", value=total_policies)
+                styled_metric("Total Policies", total_policies)
             with col2:
-                st.metric(label="Total Bundles", value=total_bundles)
+                styled_metric("Total Bundles", total_bundles)
 
-            # Bundles by Policy and Stage
+            # Bundles by Policy and Stage Counters
             st.write("### Bundles by Policy and Stage")
             for policy_name, stages in bundles_per_policy_stage.items():
                 st.subheader(policy_name)
-                for stage, bundles in stages.items():
-                    st.write(f"**Stage:** {stage} ({len(bundles)} bundles)")
-                    for bundle in bundles:
-                        st.write(f"- **Bundle Name:** {bundle['name']}")
-                        st.write(f"  - **Created At:** {bundle['createdAt']}")
-                        st.write(f"  - **State:** {bundle['state']}")
-                    st.write("---")
-            st.write("---")
+                col_count = 0
+                col_container = st.columns(3)
+                for stage, count in stages.items():
+                    with col_container[col_count % 3]:
+                        styled_metric(stage, count)
+                    col_count += 1
+                st.write("---")
 
             # Detailed Deliverables Section
             for deliverable in deliverables:
