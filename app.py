@@ -109,8 +109,19 @@ else:
                         attachment_details[attachment_type] = []
                     attachment_details[attachment_type].append(attachment_name)
 
+                # Distinct Bundles Section
+                st.write("---")
+                st.markdown(
+                    """
+                    <div style="padding: 20px; border: 3px solid #4A90E2; border-radius: 10px; background-color: #F5F8FA;">
+                        <h2 style="color: #4A90E2; text-align: center;">Governed Bundles</h2>
+                    </div>
+                    """,
+                    unsafe_allow_html=True,
+                )
+                
                 # Display bundle details
-                st.subheader(f"Bundle: {bundle_name}")
+                st.subheader(f"{bundle_name}")
                 st.write(f"**Status:** {status}")
                 st.write(f"**Policy Name:** {policy_name}")
                 st.write(f"**Stage:** {stage}")
