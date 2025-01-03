@@ -2,6 +2,7 @@ import streamlit as st
 import requests
 import os
 from collections import defaultdict
+import matplotlib.pyplot as plt
 
 # Load API Host and Key from environment variables or fallback values
 API_HOST = os.getenv("API_HOST", "https://se-demo.domino.tech")
@@ -76,18 +77,40 @@ else:
                 if project["id"] in projects_without_bundles_ids
             ]
 
-            # Display statistics
+            # Summary Section
             total_projects = len(all_project_ids)
-            projects_without_bundles_count = len(projects_without_bundles)
             projects_with_bundles_count = len(projects_with_bundles_ids)
+            projects_without_bundles_count = len(projects_without_bundles)
+            total_policies = len(set(bundle.get("policyName", "No Policy Name") for bundle in deliverables))
+            total_bundles = len(deliverables)
+
+            # Additional metrics
+            bundles_by_stage = defaultdict(int)
+            bundles_by_status = defaultdict(int)
+            for bundle in deliverables:
+                bundles_by_stage[bundle.get("stage", "Unknown")] += 1
+                bundles_by_status[bundle.get("state", "Unknown")] += 1
 
             # Summary Section with Metrics
             st.markdown("---")
             st.header("Summary")
-            cols = st.columns(3)
-            cols[0].metric("Total Projects", total_projects)
-            cols[1].metric("Projects With Bundles", projects_with_bundles_count)
-            cols[2].metric("Projects Without Bundles", projects_without_bundles_count)
+            cols = st.columns(4)
+            cols[0].metric("Total Policies", total_policies)
+            cols[1].metric("Total Bundles", total_bundles)
+            cols[2].metric("Projects With Bundles", projects_with_bundles_count)
+            cols[3].metric("Projects Without Bundles", projects_without_bundles_count)
+
+            # Bundles by Stage as Metrics
+            st.subheader("Bundles by Stage")
+            stage_cols = st.columns(len(bundles_by_stage))
+            for i, (stage, count) in enumerate(bundles_by_stage.items()):
+                stage_cols[i].metric(stage, count)
+
+            # Bundles by Status as Metrics
+            st.subheader("Bundles by Status")
+            status_cols = st.columns(len(bundles_by_status))
+            for i, (status, count) in enumerate(bundles_by_status.items()):
+                status_cols[i].metric(status, count)
 
             # Projects Without Bundles Section
             st.markdown("---")
@@ -98,7 +121,7 @@ else:
                     project_link = f"{API_HOST}/u/{project_id}"  # Generate project link
                     st.markdown(f"- [{project}]({project_link})", unsafe_allow_html=True)
 
-            # Ensure Bundles by Policy and Stage remain functional
+            # Display bundles by policy and stage
             st.markdown("---")
             st.header("Bundles by Policy and Stage")
             bundles_per_policy_stage = defaultdict(lambda: defaultdict(list))
@@ -112,6 +135,7 @@ else:
                     (bundle.get("policyId") for bundle in deliverables if bundle.get("policyName") == policy_name),
                     "unknown",
                 )
+                # Corrected policy deep link
                 policy_link = f"{API_HOST}/governance/policy/{policy_id}/editor"
                 st.subheader(f"Policy: {policy_name}")
                 st.markdown(f"[View Policy]({policy_link})", unsafe_allow_html=True)
