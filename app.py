@@ -53,109 +53,97 @@ if not API_KEY:
 else:
     # Fetch all projects
     all_projects = fetch_all_projects()
-    all_project_ids = {project["id"] for project in all_projects}
-    all_project_names = {project["name"]: project for project in all_projects}
+    if not all_projects:
+        st.error("No projects retrieved from the API.")
+    else:
+        all_project_names = {project["id"]: project for project in all_projects}
 
-    # Separate quick-start projects
-    quick_start_projects = [p for p in all_projects if "quick-start" in p["name"].lower()]
-    quick_start_project_ids = {p["id"] for p in quick_start_projects}
+        # Separate quick-start projects
+        quick_start_projects = [
+            project for project in all_projects if "quick-start" in project["name"].lower()
+        ]
+        quick_start_project_ids = {project["id"] for project in quick_start_projects}
 
-    # Exclude quick-start projects from main projects list
-    non_quick_start_project_ids = all_project_ids - quick_start_project_ids
+        # Exclude quick-start projects
+        non_quick_start_projects = [
+            project for project in all_projects if project["id"] not in quick_start_project_ids
+        ]
+        non_quick_start_project_ids = {project["id"] for project in non_quick_start_projects}
 
-    # Fetch deliverables
-    data = fetch_deliverables()
-    if data:
-        deliverables = data.get("data", [])
-        if not deliverables:
-            st.warning("No deliverables found.")
-        else:
-            # Get the list of projects with bundles
-            projects_with_bundles_ids = set(
-                bundle.get("projectId") for bundle in deliverables if bundle.get("projectId")
-            )
+        # Fetch deliverables
+        data = fetch_deliverables()
+        if data:
+            deliverables = data.get("data", [])
+            if not deliverables:
+                st.warning("No deliverables found.")
+            else:
+                # Get the list of projects with bundles
+                projects_with_bundles_ids = {
+                    bundle.get("projectId") for bundle in deliverables if bundle.get("projectId")
+                }
 
-            # Find projects without bundles
-            projects_without_bundles_ids = non_quick_start_project_ids - projects_with_bundles_ids
-            projects_without_bundles = [
-                all_project_names[project_id]["name"]
-                for project_id in projects_without_bundles_ids
-                if project_id in all_project_names
-            ]
+                # Find projects without bundles
+                projects_without_bundles_ids = non_quick_start_project_ids - projects_with_bundles_ids
+                projects_without_bundles = [
+                    all_project_names[project_id]["name"]
+                    for project_id in projects_without_bundles_ids
+                    if project_id in all_project_names
+                ]
 
-            # Summary Section
-            total_projects = len(non_quick_start_project_ids)
-            projects_with_bundles_count = len(projects_with_bundles_ids)
-            projects_without_bundles_count = len(projects_without_bundles)
-            total_policies = len(set(bundle.get("policyName", "No Policy Name") for bundle in deliverables))
-            total_bundles = len(deliverables)
+                # Summary Section
+                total_projects = len(non_quick_start_project_ids)
+                projects_with_bundles_count = len(projects_with_bundles_ids)
+                projects_without_bundles_count = len(projects_without_bundles)
+                total_policies = len(set(bundle.get("policyName", "No Policy Name") for bundle in deliverables))
+                total_bundles = len(deliverables)
 
-            # Additional metrics
-            bundles_by_stage = defaultdict(int)
-            bundles_by_status = defaultdict(int)
-            for bundle in deliverables:
-                bundles_by_stage[bundle.get("stage", "Unknown")] += 1
-                bundles_by_status[bundle.get("state", "Unknown")] += 1
+                # Summary Section with Metrics
+                st.markdown("---")
+                st.header("Summary")
+                cols = st.columns(4)
+                cols[0].metric("Total Policies", total_policies)
+                cols[1].metric("Total Bundles", total_bundles)
+                cols[2].metric("Projects With Bundles", projects_with_bundles_count)
+                cols[3].metric("Projects Without Bundles", projects_without_bundles_count)
 
-            # Summary Section with Metrics
-            st.markdown("---")
-            st.header("Summary")
-            cols = st.columns(4)
-            cols[0].metric("Total Policies", total_policies)
-            cols[1].metric("Total Bundles", total_bundles)
-            cols[2].metric("Projects With Bundles", projects_with_bundles_count)
-            cols[3].metric("Projects Without Bundles", projects_without_bundles_count)
+                # Projects Without Bundles Section
+                st.markdown("---")
+                st.header("Projects Without Bundles")
+                with st.expander("View Projects Without Bundles"):
+                    for project_id in projects_without_bundles_ids:
+                        project_details = all_project_names.get(project_id, {})
+                        project_owner = project_details.get("ownerName", "unknown_user")
+                        project_name = project_details.get("name", "unknown_project")
+                        project_link = f"{API_HOST}/u/{project_owner}/{project_name}/overview"
+                        st.markdown(f"- [{project_name}]({project_link})", unsafe_allow_html=True)
 
-            # Bundles by Stage as Metrics
-            st.subheader("Bundles by Stage")
-            stage_cols = st.columns(len(bundles_by_stage))
-            for i, (stage, count) in enumerate(bundles_by_stage.items()):
-                stage_cols[i].metric(stage, count)
+                # Display bundles by policy and stage
+                st.markdown("---")
+                st.header("Bundles by Policy and Stage")
+                bundles_per_policy_stage = defaultdict(lambda: defaultdict(list))
+                for bundle in deliverables:
+                    policy_name = bundle.get("policyName", "No Policy Name")
+                    bundle_stage = bundle.get("stage", "No Stage")
+                    bundles_per_policy_stage[policy_name][bundle_stage].append(bundle)
 
-            # Bundles by Status as Metrics
-            st.subheader("Bundles by Status")
-            status_cols = st.columns(len(bundles_by_status))
-            for i, (status, count) in enumerate(bundles_by_status.items()):
-                status_cols[i].metric(status, count)
+                for policy_name, stages in bundles_per_policy_stage.items():
+                    policy_id = next(
+                        (bundle.get("policyId") for bundle in deliverables if bundle.get("policyName") == policy_name),
+                        "unknown",
+                    )
+                    # Corrected policy deep link
+                    policy_link = f"{API_HOST}/governance/policy/{policy_id}/editor"
+                    st.subheader(f"Policy: {policy_name}")
+                    st.markdown(f"[View Policy]({policy_link})", unsafe_allow_html=True)
 
-            # Projects Without Bundles Section
-            st.markdown("---")
-            st.header("Projects Without Bundles")
-            with st.expander("View Projects Without Bundles"):
-                for project in projects_without_bundles:
-                    project_details = all_project_names.get(project, {})
-                    project_owner = project_details.get("ownerName", "unknown_user")
-                    project_name = project_details.get("name", "unknown_project")
-                    project_link = f"{API_HOST}/u/{project_owner}/{project_name}/overview"
-                    st.markdown(f"- [{project}]({project_link})", unsafe_allow_html=True)
-
-            # Display bundles by policy and stage
-            st.markdown("---")
-            st.header("Bundles by Policy and Stage")
-            bundles_per_policy_stage = defaultdict(lambda: defaultdict(list))
-            for bundle in deliverables:
-                policy_name = bundle.get("policyName", "No Policy Name")
-                bundle_stage = bundle.get("stage", "No Stage")
-                bundles_per_policy_stage[policy_name][bundle_stage].append(bundle)
-
-            for policy_name, stages in bundles_per_policy_stage.items():
-                policy_id = next(
-                    (bundle.get("policyId") for bundle in deliverables if bundle.get("policyName") == policy_name),
-                    "unknown",
-                )
-                # Corrected policy deep link
-                policy_link = f"{API_HOST}/governance/policy/{policy_id}/editor"
-                st.subheader(f"Policy: {policy_name}")
-                st.markdown(f"[View Policy]({policy_link})", unsafe_allow_html=True)
-
-                for stage, bundles in stages.items():
-                    with st.expander(f"{stage} ({len(bundles)})"):
-                        for bundle in bundles:
-                            bundle_name = bundle.get("name", "Unnamed Bundle")
-                            bundle_id = bundle.get("id", "")
-                            project_owner = bundle.get("projectOwner", "unknown_user")
-                            project_name = bundle.get("projectName", "unknown_project")
-                            bundle_link = (
-                                f"{API_HOST}/u/{project_owner}/{project_name}/governance/bundle/{bundle_id}/policy/{policy_id}/evidence"
-                            )
-                            st.markdown(f"- [{bundle_name}]({bundle_link})", unsafe_allow_html=True)
+                    for stage, bundles in stages.items():
+                        with st.expander(f"{stage} ({len(bundles)})"):
+                            for bundle in bundles:
+                                bundle_name = bundle.get("name", "Unnamed Bundle")
+                                bundle_id = bundle.get("id", "")
+                                project_owner = bundle.get("projectOwner", "unknown_user")
+                                project_name = bundle.get("projectName", "unknown_project")
+                                bundle_link = (
+                                    f"{API_HOST}/u/{project_owner}/{project_name}/governance/bundle/{bundle_id}/policy/{policy_id}/evidence"
+                                )
+                                st.markdown(f"- [{bundle_name}]({bundle_link})", unsafe_allow_html=True)
