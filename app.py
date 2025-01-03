@@ -17,6 +17,20 @@ st.sidebar.write(f"API Key: {API_KEY[:5]}{'*' * (len(API_KEY) - 5)}")  # Masked 
 if not API_KEY:
     st.sidebar.error("API Key is not set. Please configure the environment variable.")
 
+# Function to fetch all projects
+@st.cache_data
+def fetch_all_projects():
+    try:
+        url = f"{API_HOST}/v4/projects"
+        response = requests.get(url, headers={"X-Domino-Api-Key": API_KEY})
+        if response.status_code != 200:
+            st.error(f"Error fetching projects: {response.status_code}")
+            return []
+        return response.json().get("data", [])
+    except Exception as e:
+        st.error(f"An error occurred while fetching projects: {e}")
+        return []
+
 # Function to fetch deliverables from the API
 @st.cache_data
 def fetch_deliverables():
@@ -33,41 +47,47 @@ def fetch_deliverables():
         st.error(f"An error occurred: {e}")
         return None
 
-# Fetch deliverables
+# Main dashboard logic
 if not API_KEY:
     st.error("API Key is missing. Set the environment variable and restart the app.")
 else:
+    # Fetch all projects
+    all_projects = fetch_all_projects()
+    project_names = [project["name"] for project in all_projects]
+
+    # Fetch deliverables
     data = fetch_deliverables()
     if data:
         deliverables = data.get("data", [])
         if not deliverables:
             st.warning("No deliverables found.")
         else:
-            # Summary section
-            total_policies = len(set(bundle.get("policyName", "No Policy Name") for bundle in deliverables))
-            total_bundles = len(deliverables)
+            # Get the list of projects with bundles
+            projects_with_bundles = set(bundle.get("projectName", "Unknown") for bundle in deliverables)
 
-            # Additional metrics
-            bundles_by_stage = defaultdict(int)
-            bundles_by_status = defaultdict(int)
-            for bundle in deliverables:
-                bundles_by_stage[bundle.get("stage", "Unknown")] += 1
-                bundles_by_status[bundle.get("state", "Unknown")] += 1
+            # Find projects without bundles
+            projects_without_bundles = set(project_names) - projects_with_bundles
+            total_projects = len(project_names)
+            projects_without_bundles_count = len(projects_without_bundles)
 
-            # Summary Section with Metrics
+            # Display results in the summary
             st.markdown("---")
             st.header("Summary")
-            cols = st.columns(4)  # Dynamically create 4 columns for metrics
-            cols[0].metric("Total Policies", total_policies)
-            cols[1].metric("Total Bundles", total_bundles)
+            cols = st.columns(4)
+            cols[0].metric("Total Projects", total_projects)
+            cols[1].metric("Projects Without Bundles", projects_without_bundles_count)
+            cols[2].metric("Projects With Bundles", len(projects_with_bundles))
+            cols[3].metric(
+                "% Without Bundles",
+                f"{(projects_without_bundles_count / total_projects) * 100:.2f}%" if total_projects > 0 else "N/A",
+            )
 
-            # Bundles by Stage as Metrics
-            for i, (stage, count) in enumerate(bundles_by_stage.items()):
-                cols[(i + 2) % 4].metric(stage, count)
-
-            # Bundles by Status as Metrics
-            for i, (status, count) in enumerate(bundles_by_status.items()):
-                cols[(i + len(bundles_by_stage) + 2) % 4].metric(status, count)
+            # Display projects without bundles
+            if projects_without_bundles:
+                st.markdown("---")
+                st.header("Projects Without Bundles")
+                for project in projects_without_bundles:
+                    st.write(f"- {project}")
 
             # Display bundles by policy and stage
             st.markdown("---")
