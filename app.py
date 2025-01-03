@@ -57,19 +57,17 @@ else:
             # Summary Section with Metrics
             st.markdown("---")
             st.header("Summary")
-            cols = st.columns(4)  # Create 4 evenly spaced columns for metrics
+            cols = st.columns(4)  # Dynamically create 4 columns for metrics
             cols[0].metric("Total Policies", total_policies)
             cols[1].metric("Total Bundles", total_bundles)
 
             # Bundles by Stage as Metrics
-            stage_metrics = list(bundles_by_stage.items())
-            for i, (stage, count) in enumerate(stage_metrics):
-                cols[(i + 2) % 4].metric(stage, count)  # Start placing after Total Bundles
+            for i, (stage, count) in enumerate(bundles_by_stage.items()):
+                cols[(i + 2) % 4].metric(stage, count)
 
             # Bundles by Status as Metrics
-            status_metrics = list(bundles_by_status.items())
-            for i, (status, count) in enumerate(status_metrics):
-                cols[(i + len(stage_metrics) + 2) % 4].metric(status, count)
+            for i, (status, count) in enumerate(bundles_by_status.items()):
+                cols[(i + len(bundles_by_stage) + 2) % 4].metric(status, count)
 
             # Display bundles by policy and stage
             st.markdown("---")
@@ -121,7 +119,7 @@ else:
                 targets = deliverable.get("targets", [])
 
                 # Group attachments by type
-                attachment_details = {}
+                attachment_details = defaultdict(list)
                 for target in targets:
                     attachment_type = target.get("type", "Unknown")
                     if attachment_type == "ModelVersion":
@@ -130,12 +128,10 @@ else:
                         attachment_name = f"{model_name} (Version: {model_version})"
                     else:
                         attachment_name = target.get("identifier", {}).get("filename", "Unnamed Attachment")
-                    if attachment_type not in attachment_details:
-                        attachment_details[attachment_type] = []
                     attachment_details[attachment_type].append(attachment_name)
 
                 # Display bundle details
-                st.subheader(f"{bundle_name}")
+                st.subheader(bundle_name)
                 st.markdown(f"[View Bundle Details]({bundle_link})", unsafe_allow_html=True)
                 st.write(f"**Status:** {status}")
                 st.write(f"**Policy Name:** {policy_name}")
@@ -144,10 +140,10 @@ else:
                 st.write(f"**Project Owner:** {project_owner}")
                 st.write(f"**Bundle Owner:** {bundle_owner}")
 
-                # Attachments in collapsible sections
+                # Attachments
                 st.write("**Attachments by Type:**")
                 for attachment_type, names in attachment_details.items():
-                    with st.expander(f"{attachment_type} ({len(names)} items)"):
+                    with st.expander(f"{attachment_type} ({len(names)})"):
                         for name in names:
                             st.write(f"- {name}")
                 st.write("---")
