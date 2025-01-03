@@ -26,7 +26,7 @@ def fetch_all_projects():
         if response.status_code != 200:
             st.error(f"Error fetching projects: {response.status_code} - {response.text}")
             return []
-        return response.json()  # The API response is a list of projects
+        return response.json()
     except Exception as e:
         st.error(f"An error occurred while fetching projects: {e}")
         return []
@@ -85,10 +85,20 @@ else:
                 # Find projects without bundles
                 projects_without_bundles_ids = non_quick_start_project_ids - projects_with_bundles_ids
                 projects_without_bundles = [
-                    all_project_names[project_id]["name"]
+                    all_project_names[project_id]
                     for project_id in projects_without_bundles_ids
                     if project_id in all_project_names
                 ]
+
+                # Projects Without Bundles Section
+                st.markdown("---")
+                st.header("Projects Without Bundles")
+                with st.expander("View Projects Without Bundles"):
+                    for project in projects_without_bundles:
+                        project_name = project.get("name", "unknown_project")
+                        project_owner = project.get("ownerName", "unknown_user")
+                        project_link = f"{API_HOST}/u/{project_owner}/{project_name}/overview"
+                        st.markdown(f"- [{project_name}]({project_link})", unsafe_allow_html=True)
 
                 # Summary Section
                 total_projects = len(non_quick_start_project_ids)
@@ -97,7 +107,6 @@ else:
                 total_policies = len(set(bundle.get("policyName", "No Policy Name") for bundle in deliverables))
                 total_bundles = len(deliverables)
 
-                # Summary Section with Metrics
                 st.markdown("---")
                 st.header("Summary")
                 cols = st.columns(4)
@@ -106,49 +115,16 @@ else:
                 cols[2].metric("Projects With Bundles", projects_with_bundles_count)
                 cols[3].metric("Projects Without Bundles", projects_without_bundles_count)
 
-                # Projects Without Bundles Section
-                st.markdown("---")
-                st.header("Projects Without Bundles")
-                with st.expander("View Projects Without Bundles"):
-                    for project_id in projects_without_bundles_ids:
-                        project_details = all_project_names.get(project_id, {})
-                        project_owner = project_details.get("ownerName", "unknown_user")
-                        project_name = project_details.get("name", "unknown_project")
-                        project_link = f"{API_HOST}/u/{project_owner}/{project_name}/overview"
-                        st.markdown(f"- [{project_name}]({project_link})", unsafe_allow_html=True)
-
-                # Display bundles by policy and stage
-                st.markdown("---")
-                st.header("Bundles by Policy and Stage")
-                bundles_per_policy_stage = defaultdict(lambda: defaultdict(list))
+                # Bundles by Stage
+                bundles_by_stage = defaultdict(int)
                 for bundle in deliverables:
-                    policy_name = bundle.get("policyName", "No Policy Name")
-                    bundle_stage = bundle.get("stage", "No Stage")
-                    bundles_per_policy_stage[policy_name][bundle_stage].append(bundle)
+                    bundles_by_stage[bundle.get("stage", "Unknown")] += 1
+                st.subheader("Bundles by Stage")
+                stage_cols = st.columns(len(bundles_by_stage))
+                for i, (stage, count) in enumerate(bundles_by_stage.items()):
+                    stage_cols[i].metric(stage, count)
 
-                for policy_name, stages in bundles_per_policy_stage.items():
-                    policy_id = next(
-                        (bundle.get("policyId") for bundle in deliverables if bundle.get("policyName") == policy_name),
-                        "unknown",
-                    )
-                    # Corrected policy deep link
-                    policy_link = f"{API_HOST}/governance/policy/{policy_id}/editor"
-                    st.subheader(f"Policy: {policy_name}")
-                    st.markdown(f"[View Policy]({policy_link})", unsafe_allow_html=True)
-
-                    for stage, bundles in stages.items():
-                        with st.expander(f"{stage} ({len(bundles)})"):
-                            for bundle in bundles:
-                                bundle_name = bundle.get("name", "Unnamed Bundle")
-                                bundle_id = bundle.get("id", "")
-                                project_owner = bundle.get("projectOwner", "unknown_user")
-                                project_name = bundle.get("projectName", "unknown_project")
-                                bundle_link = (
-                                    f"{API_HOST}/u/{project_owner}/{project_name}/governance/bundle/{bundle_id}/policy/{policy_id}/evidence"
-                                )
-                                st.markdown(f"- [{bundle_name}]({bundle_link})", unsafe_allow_html=True)
-
-                # Detailed Deliverables Section
+                # Governed Bundles Section
                 st.write("---")
                 st.header("Governed Bundles")
                 for deliverable in deliverables:
@@ -162,21 +138,7 @@ else:
                     bundle_id = deliverable.get("id", "")
                     policy_id = deliverable.get("policyId", "")
                     bundle_link = f"{API_HOST}/u/{project_owner}/{project_name}/governance/bundle/{bundle_id}/policy/{policy_id}/evidence"
-                    targets = deliverable.get("targets", [])
 
-                    # Group attachments by type
-                    attachment_details = defaultdict(list)
-                    for target in targets:
-                        attachment_type = target.get("type", "Unknown")
-                        if attachment_type == "ModelVersion":
-                            model_name = target.get("identifier", {}).get("name", "Unnamed Model")
-                            model_version = target.get("identifier", {}).get("version", "Unknown Version")
-                            attachment_name = f"{model_name} (Version: {model_version})"
-                        else:
-                            attachment_name = target.get("identifier", {}).get("filename", "Unnamed Attachment")
-                        attachment_details[attachment_type].append(attachment_name)
-
-                    # Display bundle details
                     st.subheader(bundle_name)
                     st.markdown(f"[View Bundle Details]({bundle_link})", unsafe_allow_html=True)
                     st.write(f"**Status:** {status}")
@@ -185,11 +147,3 @@ else:
                     st.write(f"**Project Name:** {project_name}")
                     st.write(f"**Project Owner:** {project_owner}")
                     st.write(f"**Bundle Owner:** {bundle_owner}")
-
-                    # Attachments
-                    st.write("**Attachments by Type:**")
-                    for attachment_type, names in attachment_details.items():
-                        with st.expander(f"{attachment_type} ({len(names)})"):
-                            for name in names:
-                                st.write(f"- {name}")
-                    st.write("---")
