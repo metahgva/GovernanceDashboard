@@ -112,22 +112,18 @@ else:
             cols[2].metric("Projects with Bundles", total_bundled_projects)
             cols[3].metric("Projects without Bundles", total_projects_without_bundles)
 
-            # Governed Bundles Section
+            # Policies Adoption
             st.markdown("---")
-            st.header("Governed Bundles")
-            for deliverable in deliverables:
-                bundle_name = deliverable.get("name", "Unnamed Bundle")
-                status = deliverable.get("state", "Unknown")
-                policy_name = deliverable.get("policyName", "Unknown")
-                stage = deliverable.get("stage", "Unknown")
-                project_name = deliverable.get("projectName", "Unnamed Project")
-                owner_username = deliverable.get("createdBy", {}).get("username", "unknown_user")
-                bundle_link = f"{API_HOST}/u/{owner_username}/{project_name}/overview"
-                st.subheader(bundle_name)
-                st.markdown(f"[View Bundle Details]({bundle_link})", unsafe_allow_html=True)
-                st.write(f"**Status:** {status}")
-                st.write(f"**Policy Name:** {policy_name}")
-                st.write(f"**Stage:** {stage}")
+            st.header("Policies Adoption")
+            bundles_per_policy_stage = calculate_policy_stages(deliverables)
+            for policy_name, stages in bundles_per_policy_stage.items():
+                st.subheader(f"Policy: {policy_name}")
+                for stage, bundles in stages.items():
+                    with st.expander(f"{stage} ({len(bundles)})"):
+                        for bundle in bundles:
+                            bundle_name = bundle.get("name", "Unnamed Bundle")
+                            st.write(f"- {bundle_name}")
+                            
 
             # Projects Without Bundles Section
             st.markdown("---")
@@ -141,15 +137,20 @@ else:
                         owner_username = project.get("ownerUsername", "unknown_user")
                         project_link = f"{API_HOST}/u/{owner_username}/{project_name}/overview"
                         st.markdown(f"- [{project_name}]({project_link})", unsafe_allow_html=True)
-
-            # Detailed Information Section
+                        
+            # Governed Bundles Section
             st.markdown("---")
-            st.header("Detailed Information")
-            bundles_per_policy_stage = calculate_policy_stages(deliverables)
-            for policy_name, stages in bundles_per_policy_stage.items():
-                st.subheader(f"Policy: {policy_name}")
-                for stage, bundles in stages.items():
-                    with st.expander(f"{stage} ({len(bundles)})"):
-                        for bundle in bundles:
-                            bundle_name = bundle.get("name", "Unnamed Bundle")
-                            st.write(f"- {bundle_name}")
+            st.header("Governed Bundles Details")
+            for deliverable in deliverables:
+                bundle_name = deliverable.get("name", "Unnamed Bundle")
+                status = deliverable.get("state", "Unknown")
+                policy_name = deliverable.get("policyName", "Unknown")
+                stage = deliverable.get("stage", "Unknown")
+                project_name = deliverable.get("projectName", "Unnamed Project")
+                owner_username = deliverable.get("createdBy", {}).get("username", "unknown_user")
+                bundle_link = f"{API_HOST}/u/{owner_username}/{project_name}/overview"
+                st.subheader(bundle_name)
+                st.markdown(f"[View Bundle Details]({bundle_link})", unsafe_allow_html=True)
+                st.write(f"**Status:** {status}")
+                st.write(f"**Policy Name:** {policy_name}")
+                st.write(f"**Stage:** {stage}")
