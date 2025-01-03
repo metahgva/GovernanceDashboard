@@ -2,6 +2,7 @@ import streamlit as st
 import requests
 import os
 from collections import defaultdict
+import matplotlib.pyplot as plt
 
 # Load API Host and Key from environment variables or fallback values
 API_HOST = os.getenv("API_HOST", "https://se-demo.domino.tech")
@@ -33,7 +34,67 @@ def fetch_deliverables():
         st.error(f"An error occurred: {e}")
         return None
 
-# Fetch deliverables
+# Function to fetch approvals from the API
+@st.cache_data
+def get_approval_status():
+    try:
+        response = requests.get(f"{API_HOST}/governance/approvals", headers={"Authorization": f"Bearer {API_KEY}"})
+        if response.status_code != 200:
+            st.error(f"Error fetching approvals: {response.status_code}")
+            return []
+        return response.json().get("approvals", [])
+    except Exception as e:
+        st.error(f"An error occurred while fetching approvals: {e}")
+        return []
+
+# Function to fetch registered models from the API
+@st.cache_data
+def get_registered_models():
+    try:
+        response = requests.get(f"{API_HOST}/mlflow/registered-models", headers={"Authorization": f"Bearer {API_KEY}"})
+        if response.status_code != 200:
+            st.error(f"Error fetching registered models: {response.status_code}")
+            return []
+        return response.json().get("models", [])
+    except Exception as e:
+        st.error(f"An error occurred while fetching registered models: {e}")
+        return []
+
+# Function to count governed models
+def count_governed_models(registered_models, bundles):
+    governed_models = set()
+    for bundle in bundles:
+        for target in bundle.get("targets", []):
+            if target.get("type") == "ModelVersion":
+                model_name = target.get("identifier", {}).get("name")
+                if model_name in registered_models:
+                    governed_models.add(model_name)
+    return len(governed_models)
+
+# Function to calculate project policy stats
+def calculate_project_policy_stats(deliverables):
+    total_projects = len(set(bundle.get("projectName", "Unknown") for bundle in deliverables))
+    projects_with_policies = len(set(bundle.get("projectName") for bundle in deliverables if bundle.get("policyName")))
+    projects_without_policies = total_projects - projects_with_policies
+
+    with_policies_pct = (projects_with_policies / total_projects) * 100 if total_projects > 0 else 0
+    without_policies_pct = 100 - with_policies_pct
+
+    return total_projects, projects_with_policies, projects_without_policies, with_policies_pct, without_policies_pct
+
+# Function to plot stages for policies
+def plot_policy_stages(policy_name, stages):
+    stage_names = list(stages.keys())
+    stage_counts = [len(bundles) for bundles in stages.values()]
+
+    fig, ax = plt.subplots()
+    ax.bar(stage_names, stage_counts, color="skyblue")
+    ax.set_title(f"Stage Tracking for Policy: {policy_name}")
+    ax.set_xlabel("Stages")
+    ax.set_ylabel("Number of Bundles")
+    return fig
+
+# Main dashboard logic
 if not API_KEY:
     st.error("API Key is missing. Set the environment variable and restart the app.")
 else:
@@ -54,20 +115,50 @@ else:
                 bundles_by_stage[bundle.get("stage", "Unknown")] += 1
                 bundles_by_status[bundle.get("state", "Unknown")] += 1
 
+            # Registered models and governed models
+            registered_models = [model["name"] for model in get_registered_models()]
+            governed_model_count = count_governed_models(registered_models, deliverables)
+
+            # Project stats
+            total_projects, with_policies, without_policies, with_policies_pct, without_policies_pct = calculate_project_policy_stats(deliverables)
+
             # Summary Section with Metrics
             st.markdown("---")
             st.header("Summary")
-            cols = st.columns(4)  # Dynamically create 4 columns for metrics
+            cols = st.columns(4)  # Create 4 evenly spaced columns for metrics
             cols[0].metric("Total Policies", total_policies)
             cols[1].metric("Total Bundles", total_bundles)
+            cols[2].metric("Governed Models", governed_model_count)
+            cols[3].metric("Total Projects", total_projects)
 
             # Bundles by Stage as Metrics
+            st.subheader("Bundles by Stage")
+            stage_cols = st.columns(len(bundles_by_stage))
             for i, (stage, count) in enumerate(bundles_by_stage.items()):
-                cols[(i + 2) % 4].metric(stage, count)
+                stage_cols[i].metric(stage, count)
 
             # Bundles by Status as Metrics
+            st.subheader("Bundles by Status")
+            status_cols = st.columns(len(bundles_by_status))
             for i, (status, count) in enumerate(bundles_by_status.items()):
-                cols[(i + len(bundles_by_stage) + 2) % 4].metric(status, count)
+                status_cols[i].metric(status, count)
+
+            # Projects with/without policies
+            st.subheader("Projects with/without Policies")
+            project_cols = st.columns(2)
+            project_cols[0].metric("Projects with Policies", f"{with_policies} ({with_policies_pct:.1f}%)")
+            project_cols[1].metric("Projects without Policies", f"{without_policies} ({without_policies_pct:.1f}%)")
+
+            # Approval Section
+            st.markdown("---")
+            st.header("Pending Approvals")
+            approvals = get_approval_status()
+            pending_approvals = [approval for approval in approvals if approval["status"] == "Pending"]
+            if pending_approvals:
+                for approval in pending_approvals:
+                    st.write(f"- {approval['bundleName']} (Policy: {approval['policyName']})")
+            else:
+                st.write("No pending approvals.")
 
             # Display bundles by policy and stage
             st.markdown("---")
@@ -83,11 +174,15 @@ else:
                     (bundle.get("policyId") for bundle in deliverables if bundle.get("policyName") == policy_name),
                     "unknown",
                 )
-                # Corrected policy deep link
                 policy_link = f"{API_HOST}/governance/policy/{policy_id}/editor"
                 st.subheader(f"Policy: {policy_name}")
                 st.markdown(f"[View Policy]({policy_link})", unsafe_allow_html=True)
 
+                # Plot stages for the policy
+                fig = plot_policy_stages(policy_name, stages)
+                st.pyplot(fig)
+
+                # Expandable sections for stages
                 for stage, bundles in stages.items():
                     with st.expander(f"{stage} ({len(bundles)})"):
                         for bundle in bundles:
@@ -95,55 +190,5 @@ else:
                             bundle_id = bundle.get("id", "")
                             project_owner = bundle.get("projectOwner", "unknown_user")
                             project_name = bundle.get("projectName", "unknown_project")
-                            # Corrected bundle deep link
-                            bundle_link = (
-                                f"{API_HOST}/u/{project_owner}/{project_name}/governance/bundle/{bundle_id}/policy/{policy_id}/evidence"
-                            )
+                            bundle_link = f"{API_HOST}/u/{project_owner}/{project_name}/governance/bundle/{bundle_id}/policy/{policy_id}/evidence"
                             st.markdown(f"- [{bundle_name}]({bundle_link})", unsafe_allow_html=True)
-
-            # Detailed Deliverables Section
-            st.write("---")
-            st.header("Governed Bundles")
-            for deliverable in deliverables:
-                # Extract details
-                bundle_name = deliverable.get("name", "Unnamed Bundle")
-                status = deliverable.get("state", "Unknown")
-                policy_name = deliverable.get("policyName", "Unknown")
-                stage = deliverable.get("stage", "Unknown")
-                project_name = deliverable.get("projectName", "Unnamed Project")
-                project_owner = deliverable.get("projectOwner", "Unknown Project Owner")
-                bundle_owner = f"{deliverable.get('createdBy', {}).get('firstName', 'Unknown')} {deliverable.get('createdBy', {}).get('lastName', 'Unknown')}"
-                bundle_id = deliverable.get("id", "")
-                policy_id = deliverable.get("policyId", "")
-                bundle_link = f"{API_HOST}/u/{project_owner}/{project_name}/governance/bundle/{bundle_id}/policy/{policy_id}/evidence"
-                targets = deliverable.get("targets", [])
-
-                # Group attachments by type
-                attachment_details = defaultdict(list)
-                for target in targets:
-                    attachment_type = target.get("type", "Unknown")
-                    if attachment_type == "ModelVersion":
-                        model_name = target.get("identifier", {}).get("name", "Unnamed Model")
-                        model_version = target.get("identifier", {}).get("version", "Unknown Version")
-                        attachment_name = f"{model_name} (Version: {model_version})"
-                    else:
-                        attachment_name = target.get("identifier", {}).get("filename", "Unnamed Attachment")
-                    attachment_details[attachment_type].append(attachment_name)
-
-                # Display bundle details
-                st.subheader(bundle_name)
-                st.markdown(f"[View Bundle Details]({bundle_link})", unsafe_allow_html=True)
-                st.write(f"**Status:** {status}")
-                st.write(f"**Policy Name:** {policy_name}")
-                st.write(f"**Stage:** {stage}")
-                st.write(f"**Project Name:** {project_name}")
-                st.write(f"**Project Owner:** {project_owner}")
-                st.write(f"**Bundle Owner:** {bundle_owner}")
-
-                # Attachments
-                st.write("**Attachments by Type:**")
-                for attachment_type, names in attachment_details.items():
-                    with st.expander(f"{attachment_type} ({len(names)})"):
-                        for name in names:
-                            st.write(f"- {name}")
-                st.write("---")
