@@ -1,21 +1,13 @@
 import streamlit as st
 import requests
 import os
-from collections import defaultdict
 
 # Load API Host and Key from environment variables or fallback values
 API_HOST = os.getenv("API_HOST", "https://se-demo.domino.tech")
 API_KEY = os.getenv("API_KEY", "2627b46253dfea3a329b8c5b84748b98d5b3c5ffe6eb02a55f7177231fc8c1c4")
 
 # Streamlit app title
-st.title("Deliverables and Projects Dashboard")
-
-# Sidebar navigation
-st.sidebar.title("Navigation")
-st.sidebar.markdown("[Summary](#summary)", unsafe_allow_html=True)
-st.sidebar.markdown("[Governed Bundles](#governed-bundles)", unsafe_allow_html=True)
-st.sidebar.markdown("[Projects Without Bundles](#projects-without-bundles)", unsafe_allow_html=True)
-st.sidebar.markdown("[Detailed Information](#detailed-information)", unsafe_allow_html=True)
+st.title("Policy Stages Test App")
 
 # Sidebar API Configuration
 st.sidebar.header("API Configuration")
@@ -24,133 +16,39 @@ st.sidebar.write(f"API Key: {API_KEY[:5]}{'*' * (len(API_KEY) - 5)}")  # Masked 
 if not API_KEY:
     st.sidebar.error("API Key is not set. Please configure the environment variable.")
 
-# Function to fetch deliverables
-@st.cache_data
-def fetch_deliverables():
+# Function to fetch policy definition
+def fetch_policy_definition(policy_id):
+    st.write(f"Fetching policy definition for Policy ID: {policy_id}")  # Debug info
     try:
         response = requests.get(
-            f"{API_HOST}/guardrails/v1/deliverables",
-            auth=(API_KEY, API_KEY),
+            f"{API_HOST}/governance/policies/{policy_id}/definition",
+            headers={"Authorization": f"Bearer {API_KEY}"},
         )
         if response.status_code != 200:
-            st.error(f"Error fetching deliverables: {response.status_code} - {response.text}")
-            return None
+            st.error(f"Error fetching policy definition: {response.status_code} - {response.text}")
+            return {}
         return response.json()
     except Exception as e:
-        st.error(f"An error occurred while fetching deliverables: {e}")
-        return None
+        st.error(f"An error occurred while fetching policy definition: {e}")
+        return {}
 
-# Function to fetch all projects
-@st.cache_data
-def fetch_all_projects():
-    try:
-        url = f"{API_HOST}/v4/projects"
-        response = requests.get(url, headers={"X-Domino-Api-Key": API_KEY})
-        if response.status_code != 200:
-            st.error(f"Error fetching projects: {response.status_code} - {response.text}")
-            return []
-        return response.json()
-    except Exception as e:
-        st.error(f"An error occurred while fetching projects: {e}")
-        return []
+# Input Policy ID for testing
+policy_id = st.text_input("Enter Policy ID", value="")
 
-# Function to calculate project stats
-def calculate_project_stats(all_projects, deliverables):
-    quick_start_projects = [
-        project for project in all_projects if "quick-start" in project["name"].lower()
-    ]
-    quick_start_project_ids = {project["id"] for project in quick_start_projects}
-
-    non_quick_start_projects = [
-        project for project in all_projects if project["id"] not in quick_start_project_ids
-    ]
-
-    bundled_projects = {bundle.get("projectName", "unknown_project") for bundle in deliverables}
-    projects_without_bundles = [
-        project for project in non_quick_start_projects if project["name"] not in bundled_projects
-    ]
-
-    return non_quick_start_projects, quick_start_projects, projects_without_bundles
-
-# Function to calculate bundles by policy and stage
-def calculate_policy_stages(deliverables):
-    bundles_per_policy_stage = defaultdict(lambda: defaultdict(list))
-    for bundle in deliverables:
-        policy_name = bundle.get("policyName", "No Policy Name")
-        bundle_stage = bundle.get("stage", "No Stage")
-        bundles_per_policy_stage[policy_name][bundle_stage].append(bundle)
-    return bundles_per_policy_stage
-
-# Main Dashboard Logic
-all_projects = fetch_all_projects()
-deliverables_data = fetch_deliverables()
-
-if not all_projects:
-    st.error("No projects retrieved from the API.")
-else:
-    if deliverables_data:
-        deliverables = deliverables_data.get("data", [])
-        if not deliverables:
-            st.warning("No deliverables found.")
+# Fetch and display policy stages
+if policy_id:
+    policy_definition = fetch_policy_definition(policy_id)
+    if policy_definition:
+        st.subheader(f"Policy Stages for Policy ID: {policy_id}")
+        
+        # Debug: Display full response
+        st.write("Policy Definition Response (Debug Info):")
+        st.json(policy_definition)
+        
+        stages = policy_definition.get("stages", [])
+        if stages:
+            st.write(f"Found {len(stages)} stages:")
+            for stage in stages:
+                st.write(f"- Stage Name: {stage['name']}")
         else:
-            # Summary Section
-            st.markdown("---")
-            st.header("Summary")
-            total_policies = len(set(bundle.get("policyName", "No Policy Name") for bundle in deliverables))
-            total_bundles = len(deliverables)
-            non_quick_start_projects, quick_start_projects, projects_without_bundles = calculate_project_stats(
-                all_projects, deliverables
-            )
-            total_projects = len(non_quick_start_projects)
-            total_bundled_projects = len(non_quick_start_projects) - len(projects_without_bundles)
-            total_projects_without_bundles = len(projects_without_bundles)
-            quick_start_count = len(quick_start_projects)
-
-            cols = st.columns(4)
-            cols[0].metric("Total Policies", total_policies)
-            cols[1].metric("Total Bundles", total_bundles)
-            cols[2].metric("Projects with Bundles", total_bundled_projects)
-            cols[3].metric("Projects without Bundles", total_projects_without_bundles)
-
-            # Policies Adoption
-            st.markdown("---")
-            st.header("Policies Adoption")
-            bundles_per_policy_stage = calculate_policy_stages(deliverables)
-            for policy_name, stages in bundles_per_policy_stage.items():
-                st.subheader(f"Policy: {policy_name}")
-                for stage, bundles in stages.items():
-                    with st.expander(f"{stage} ({len(bundles)})"):
-                        for bundle in bundles:
-                            bundle_name = bundle.get("name", "Unnamed Bundle")
-                            st.write(f"- {bundle_name}")
-                            
-
-            # Projects Without Bundles Section
-            st.markdown("---")
-            st.header("Projects Without Bundles")
-            if not projects_without_bundles:
-                st.write("All projects have bundles.")
-            else:
-                with st.expander(f"Projects Without Bundles ({len(projects_without_bundles)})"):
-                    for project in projects_without_bundles:
-                        project_name = project.get("name", "unknown_project")
-                        owner_username = project.get("ownerUsername", "unknown_user")
-                        project_link = f"{API_HOST}/u/{owner_username}/{project_name}/overview"
-                        st.markdown(f"- [{project_name}]({project_link})", unsafe_allow_html=True)
-                        
-            # Governed Bundles Section
-            st.markdown("---")
-            st.header("Governed Bundles Details")
-            for deliverable in deliverables:
-                bundle_name = deliverable.get("name", "Unnamed Bundle")
-                status = deliverable.get("state", "Unknown")
-                policy_name = deliverable.get("policyName", "Unknown")
-                stage = deliverable.get("stage", "Unknown")
-                project_name = deliverable.get("projectName", "Unnamed Project")
-                owner_username = deliverable.get("createdBy", {}).get("username", "unknown_user")
-                bundle_link = f"{API_HOST}/u/{owner_username}/{project_name}/overview"
-                st.subheader(bundle_name)
-                st.markdown(f"[View Bundle Details]({bundle_link})", unsafe_allow_html=True)
-                st.write(f"**Status:** {status}")
-                st.write(f"**Policy Name:** {policy_name}")
-                st.write(f"**Stage:** {stage}")
+            st.warning("No stages found in the policy definition.")
