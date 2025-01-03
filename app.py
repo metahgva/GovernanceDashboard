@@ -1,21 +1,18 @@
 import streamlit as st
 import requests
 import os
-from collections import defaultdict
 
 # Load API Host and Key from environment variables or fallback values
 API_HOST = os.getenv("API_HOST", "https://se-demo.domino.tech")
 API_KEY = os.getenv("API_KEY", "2627b46253dfea3a329b8c5b84748b98d5b3c5ffe6eb02a55f7177231fc8c1c4")
 
 # Streamlit app title
-st.title("Deliverables Dashboard")
+st.title("Debugging Projects Without Bundles")
 
 # Sidebar information
 st.sidebar.header("API Configuration")
 st.sidebar.write(f"API Host: {API_HOST}")
 st.sidebar.write(f"API Key: {API_KEY[:5]}{'*' * (len(API_KEY) - 5)}")  # Masked for security
-if not API_KEY:
-    st.sidebar.error("API Key is not set. Please configure the environment variable.")
 
 # Function to fetch all projects
 @st.cache_data
@@ -31,119 +28,53 @@ def fetch_all_projects():
         st.error(f"An error occurred while fetching projects: {e}")
         return []
 
-# Function to fetch deliverables from the API
-@st.cache_data
-def fetch_deliverables():
-    try:
-        response = requests.get(
-            f"{API_HOST}/guardrails/v1/deliverables",
-            auth=(API_KEY, API_KEY),
-        )
-        if response.status_code != 200:
-            st.error(f"Error: {response.status_code} - {response.text}")
-            return None
-        return response.json()
-    except Exception as e:
-        st.error(f"An error occurred: {e}")
-        return None
-
-# Main dashboard logic
-if not API_KEY:
-    st.error("API Key is missing. Set the environment variable and restart the app.")
+# Fetch all projects
+all_projects = fetch_all_projects()
+if not all_projects:
+    st.error("No projects retrieved from the API.")
 else:
-    # Fetch all projects
-    all_projects = fetch_all_projects()
-    if not all_projects:
-        st.error("No projects retrieved from the API.")
-    else:
-        all_project_names = {project["id"]: project for project in all_projects}
+    # Display all projects for debugging
+    st.write("### Debug: All Projects Data")
+    for project in all_projects:
+        st.write(project)  # Debug: Display full project details for analysis
 
-        # Separate quick-start projects
-        quick_start_projects = [
-            project for project in all_projects if "quick-start" in project["name"].lower()
-        ]
-        quick_start_project_ids = {project["id"] for project in quick_start_projects}
+    # Separate quick-start projects
+    quick_start_projects = [
+        project for project in all_projects if "quick-start" in project["name"].lower()
+    ]
+    quick_start_project_ids = {project["id"] for project in quick_start_projects}
 
-        # Exclude quick-start projects
-        non_quick_start_projects = [
-            project for project in all_projects if project["id"] not in quick_start_project_ids
-        ]
-        non_quick_start_project_ids = {project["id"] for project in non_quick_start_projects}
+    # Exclude quick-start projects
+    non_quick_start_projects = [
+        project for project in all_projects if project["id"] not in quick_start_project_ids
+    ]
+    non_quick_start_project_ids = {project["id"] for project in non_quick_start_projects}
 
-        # Fetch deliverables
-        data = fetch_deliverables()
-        if data:
-            deliverables = data.get("data", [])
-            if not deliverables:
-                st.warning("No deliverables found.")
-            else:
-                # Get the list of projects with bundles
-                projects_with_bundles_ids = {
-                    bundle.get("projectId") for bundle in deliverables if bundle.get("projectId")
-                }
+    # Debug: Display quick-start projects
+    st.write("### Debug: Quick-Start Projects")
+    for project in quick_start_projects:
+        st.write(project)
 
-                # Find projects without bundles
-                projects_without_bundles_ids = non_quick_start_project_ids - projects_with_bundles_ids
-                projects_without_bundles = [
-                    all_project_names[project_id]
-                    for project_id in projects_without_bundles_ids
-                    if project_id in all_project_names
-                ]
+    # Debug: Display non-quick-start projects
+    st.write("### Debug: Non-Quick-Start Projects")
+    for project in non_quick_start_projects:
+        st.write(project)
 
-                # Projects Without Bundles Section
-                st.markdown("---")
-                st.header("Projects Without Bundles")
-                with st.expander("View Projects Without Bundles"):
-                    for project in projects_without_bundles:
-                        project_name = project.get("name", "unknown_project")
-                        project_owner = project.get("ownerName", "unknown_user")
-                        project_link = f"{API_HOST}/u/{project_owner}/{project_name}/overview"
-                        st.markdown(f"- [{project_name}]({project_link})", unsafe_allow_html=True)
+    # Attempt to construct deep links for non-quick-start projects
+    st.markdown("---")
+    st.header("Project Deep-Link Debugging")
+    for project in non_quick_start_projects:
+        project_name = project.get("name", "unknown_project")
+        project_owner = project.get("ownerName", "unknown_user")  # Primary field for owner
+        # Alternative fields for debugging
+        owner_field_debug = {
+            "ownerName": project.get("ownerName"),
+            "createdByUserName": project.get("createdByUserName"),
+            "creator": project.get("creator"),
+        }
+        project_link = f"{API_HOST}/u/{project_owner}/{project_name}/overview"
 
-                # Summary Section
-                total_projects = len(non_quick_start_project_ids)
-                projects_with_bundles_count = len(projects_with_bundles_ids)
-                projects_without_bundles_count = len(projects_without_bundles)
-                total_policies = len(set(bundle.get("policyName", "No Policy Name") for bundle in deliverables))
-                total_bundles = len(deliverables)
-
-                st.markdown("---")
-                st.header("Summary")
-                cols = st.columns(4)
-                cols[0].metric("Total Policies", total_policies)
-                cols[1].metric("Total Bundles", total_bundles)
-                cols[2].metric("Projects With Bundles", projects_with_bundles_count)
-                cols[3].metric("Projects Without Bundles", projects_without_bundles_count)
-
-                # Bundles by Stage
-                bundles_by_stage = defaultdict(int)
-                for bundle in deliverables:
-                    bundles_by_stage[bundle.get("stage", "Unknown")] += 1
-                st.subheader("Bundles by Stage")
-                stage_cols = st.columns(len(bundles_by_stage))
-                for i, (stage, count) in enumerate(bundles_by_stage.items()):
-                    stage_cols[i].metric(stage, count)
-
-                # Governed Bundles Section
-                st.write("---")
-                st.header("Governed Bundles")
-                for deliverable in deliverables:
-                    bundle_name = deliverable.get("name", "Unnamed Bundle")
-                    status = deliverable.get("state", "Unknown")
-                    policy_name = deliverable.get("policyName", "Unknown")
-                    stage = deliverable.get("stage", "Unknown")
-                    project_name = deliverable.get("projectName", "Unnamed Project")
-                    project_owner = deliverable.get("projectOwner", "Unknown Project Owner")
-                    bundle_owner = f"{deliverable.get('createdBy', {}).get('firstName', 'Unknown')} {deliverable.get('createdBy', {}).get('lastName', 'Unknown')}"
-                    bundle_id = deliverable.get("id", "")
-                    policy_id = deliverable.get("policyId", "")
-                    bundle_link = f"{API_HOST}/u/{project_owner}/{project_name}/governance/bundle/{bundle_id}/policy/{policy_id}/evidence"
-
-                    st.subheader(bundle_name)
-                    st.markdown(f"[View Bundle Details]({bundle_link})", unsafe_allow_html=True)
-                    st.write(f"**Status:** {status}")
-                    st.write(f"**Policy Name:** {policy_name}")
-                    st.write(f"**Stage:** {stage}")
-                    st.write(f"**Project Name:** {project_name}")
-                    st.write(f"**Project Owner:** {project_owner}")
-                    st.write(f"**Bundle Owner:** {bundle_owner}")
+        # Debug: Display all potential owner fields
+        st.write(f"Project Name: {project_name}")
+        st.write(f"Owner Field Debug: {owner_field_debug}")
+        st.markdown(f"Deep-Link: [{project_name}]({project_link})", unsafe_allow_html=True)
