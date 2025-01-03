@@ -38,12 +38,20 @@ def fetch_deliverables():
 @st.cache_data
 def fetch_policy_stages(policy_id):
     try:
-        response = requests.get(f"{API_HOST}/governance/policy/{policy_id}/editor", headers={"Authorization": f"Bearer {API_KEY}"})
+        response = requests.get(
+            f"{API_HOST}/governance/policy/{policy_id}/editor",
+            headers={"Authorization": f"Bearer {API_KEY}"}
+        )
         if response.status_code != 200:
-            st.error(f"Error fetching policy stages: {response.status_code}")
+            st.error(f"Error fetching policy stages: {response.status_code} - {response.text}")
             return []
-        policy_data = response.json()
-        return [stage["name"] for stage in policy_data.get("stages", [])]
+        # Validate if the response contains stages
+        try:
+            policy_data = response.json()
+            return [stage.get("name", "Unknown Stage") for stage in policy_data.get("stages", [])]
+        except ValueError:
+            st.error("Failed to parse policy stages response as JSON.")
+            return []
     except Exception as e:
         st.error(f"An error occurred while fetching policy stages: {e}")
         return []
@@ -119,6 +127,9 @@ else:
 
                 # Fetch all stages from the policy editor
                 all_stages = fetch_policy_stages(policy_id)
+                if not all_stages:
+                    st.warning(f"No stages found for policy: {policy_name}")
+                    continue
 
                 # Plot stages for the policy
                 fig = plot_policy_stages(policy_name, stages, all_stages)
