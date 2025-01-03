@@ -24,9 +24,9 @@ def fetch_all_projects():
         url = f"{API_HOST}/v4/projects"
         response = requests.get(url, headers={"X-Domino-Api-Key": API_KEY})
         if response.status_code != 200:
-            st.error(f"Error fetching projects: {response.status_code}")
+            st.error(f"Error fetching projects: {response.status_code} - {response.text}")
             return []
-        return response.json().get("data", [])
+        return response.json()  # The API response is a list of projects
     except Exception as e:
         st.error(f"An error occurred while fetching projects: {e}")
         return []
