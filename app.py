@@ -2,7 +2,6 @@ import streamlit as st
 import requests
 import os
 from collections import defaultdict
-import matplotlib.pyplot as plt
 
 # Load API Host and Key from environment variables or fallback values
 API_HOST = os.getenv("API_HOST", "https://se-demo.domino.tech")
@@ -55,7 +54,14 @@ else:
     # Fetch all projects
     all_projects = fetch_all_projects()
     all_project_ids = {project["id"] for project in all_projects}
-    all_project_names = {project["name"]: project["id"] for project in all_projects}
+    all_project_names = {project["name"]: project for project in all_projects}
+
+    # Separate quick-start projects
+    quick_start_projects = [p for p in all_projects if "quick-start" in p["name"].lower()]
+    quick_start_project_ids = {p["id"] for p in quick_start_projects}
+
+    # Exclude quick-start projects from main projects list
+    non_quick_start_project_ids = all_project_ids - quick_start_project_ids
 
     # Fetch deliverables
     data = fetch_deliverables()
@@ -70,15 +76,15 @@ else:
             )
 
             # Find projects without bundles
-            projects_without_bundles_ids = all_project_ids - projects_with_bundles_ids
+            projects_without_bundles_ids = non_quick_start_project_ids - projects_with_bundles_ids
             projects_without_bundles = [
-                project["name"]
-                for project in all_projects
-                if project["id"] in projects_without_bundles_ids
+                all_project_names[project_id]["name"]
+                for project_id in projects_without_bundles_ids
+                if project_id in all_project_names
             ]
 
             # Summary Section
-            total_projects = len(all_project_ids)
+            total_projects = len(non_quick_start_project_ids)
             projects_with_bundles_count = len(projects_with_bundles_ids)
             projects_without_bundles_count = len(projects_without_bundles)
             total_policies = len(set(bundle.get("policyName", "No Policy Name") for bundle in deliverables))
@@ -117,8 +123,10 @@ else:
             st.header("Projects Without Bundles")
             with st.expander("View Projects Without Bundles"):
                 for project in projects_without_bundles:
-                    project_id = all_project_names.get(project, "unknown")
-                    project_link = f"{API_HOST}/u/{project_id}"  # Generate project link
+                    project_details = all_project_names.get(project, {})
+                    project_owner = project_details.get("ownerName", "unknown_user")
+                    project_name = project_details.get("name", "unknown_project")
+                    project_link = f"{API_HOST}/u/{project_owner}/{project_name}/overview"
                     st.markdown(f"- [{project}]({project_link})", unsafe_allow_html=True)
 
             # Display bundles by policy and stage
