@@ -56,6 +56,24 @@ def fetch_all_projects():
         st.error(f"An error occurred while fetching projects: {e}")
         return []
 
+# Function to calculate project stats
+def calculate_project_stats(all_projects, deliverables):
+    quick_start_projects = [
+        project for project in all_projects if "quick-start" in project["name"].lower()
+    ]
+    quick_start_project_ids = {project["id"] for project in quick_start_projects}
+
+    non_quick_start_projects = [
+        project for project in all_projects if project["id"] not in quick_start_project_ids
+    ]
+
+    bundled_projects = {bundle.get("projectName", "unknown_project") for bundle in deliverables}
+    projects_without_bundles = [
+        project for project in non_quick_start_projects if project["name"] not in bundled_projects
+    ]
+
+    return non_quick_start_projects, quick_start_projects, projects_without_bundles
+
 # Function to fetch tasks for a project
 @st.cache_data
 def fetch_tasks_for_project(project_id):
