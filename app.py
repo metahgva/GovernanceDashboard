@@ -13,6 +13,13 @@ def fetch_registered_models():
         headers = {"X-Domino-Api-Key": API_KEY}
         response = requests.get(url, headers=headers)
 
+        # Debugging info
+        st.write("API Host:", API_HOST)
+        st.write("API Key (partial):", API_KEY[:5] + "****")
+        st.write("Request URL:", url)
+        st.write("Response Status Code:", response.status_code)
+        st.write("Response Text:", response.text)
+
         if response.status_code != 200:
             st.error(f"Error fetching registered models: {response.status_code} - {response.text}")
             return None
