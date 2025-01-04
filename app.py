@@ -46,25 +46,34 @@ def fetch_registered_models():
 deliverables = fetch_deliverables()
 models = fetch_registered_models()
 
-# Display deliverables and associated targets
+# Display deliverables and associated ModelVersion targets
 if deliverables:
-    st.header("Deliverables and Targets")
+    st.header("Deliverables and Associated Model Versions")
     deliverable_targets = {d["id"]: d.get("targets", []) for d in deliverables}
 
     for deliverable in deliverables:
         st.subheader(f"Deliverable: {deliverable['name']} (ID: {deliverable['id']})")
         targets = deliverable_targets.get(deliverable["id"], [])
         if targets:
-            st.write("**Targets (Attachments):**")
+            model_links = []
             for target in targets:
-                # Debugging step to display the full target structure
-                st.write("Target Debug Info:", target)
-                
-                # Safe access to target fields
-                target_name = target.get("name", "Unnamed Target")
-                target_type = target.get("type", "Unknown Type")
-                target_id = target.get("targetId", "Unknown Target ID")
-                st.write(f"- **Name:** {target_name}, **Type:** {target_type}, **Target ID:** {target_id}")
+                # Only process ModelVersion targets
+                if target.get("type") == "ModelVersion":
+                    identifier = target.get("identifier", {})
+                    model_name = identifier.get("name", "Unknown Model")
+                    version = identifier.get("version", "Unknown Version")
+                    created_by = target.get("createdBy", {}).get("userName", "unknown_user")
+                    project_name = deliverable.get("projectName", "Unknown Project")
+                    link = f"{API_HOST}/u/{created_by}/{project_name}/model-registry/{model_name}/model-card?version={version}"
+                    model_links.append((model_name, version, link))
+            
+            if model_links:
+                st.write("**ModelVersion Targets:**")
+                for model_name, version, link in model_links:
+                    st.write(f"- **Model Name:** {model_name}, **Version:** {version}")
+                    st.markdown(f"[View Model Card]({link})", unsafe_allow_html=True)
+            else:
+                st.write("No ModelVersion targets found.")
         else:
             st.write("No targets found for this deliverable.")
 else:
