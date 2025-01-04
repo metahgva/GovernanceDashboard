@@ -47,11 +47,11 @@ def fetch_tasks_for_project(project_id):
         if response.status_code != 200:
             st.error(f"Error fetching tasks for project {project_id}: {response.status_code}")
             return []
-        tasks = response.json()
-        if not isinstance(tasks, list):
-            st.error(f"Unexpected tasks structure for project {project_id}: {tasks}")
+        tasks_data = response.json()
+        if "goals" not in tasks_data:
+            st.error(f"Unexpected tasks structure for project {project_id}: {tasks_data}")
             return []
-        return tasks
+        return tasks_data["goals"]
     except Exception as e:
         st.error(f"An error occurred while fetching tasks for project {project_id}: {e}")
         return []
@@ -93,7 +93,7 @@ else:
         for task in tasks:
             if isinstance(task, dict):
                 description = task.get("description", "")
-                task_name = description if description else "Unnamed Task"  # Use description as the task name
+                task_name = description if description else task.get("title", "Unnamed Task")
                 if "Approval requested Stage" in description:
                     bundle_name, bundle_link = parse_task_description(description)
                     if bundle_name and bundle_link:
