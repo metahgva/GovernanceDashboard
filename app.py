@@ -28,6 +28,20 @@ def fetch_deliverables():
         st.error(f"Error fetching deliverables: {e}")
         return []
 
+# Fetch deliverable details to get attachments
+@st.cache_data
+def fetch_deliverable_details(deliverable_id):
+    try:
+        response = requests.get(
+            f"{API_HOST}/guardrails/v1/deliverables/{deliverable_id}",
+            auth=(API_KEY, API_KEY),
+        )
+        response.raise_for_status()
+        return response.json()
+    except Exception as e:
+        st.error(f"Error fetching details for deliverable {deliverable_id}: {e}")
+        return None
+
 # Fetch registered models
 @st.cache_data
 def fetch_registered_models():
@@ -52,6 +66,13 @@ if deliverables and models:
 
     # Extract deliverable IDs for cross-referencing
     deliverable_ids = {d["id"] for d in deliverables}
+    deliverable_attachments = {}
+
+    # Fetch attachments for each deliverable
+    for deliverable in deliverables:
+        details = fetch_deliverable_details(deliverable["id"])
+        if details:
+            deliverable_attachments[deliverable["id"]] = details.get("attachments", [])
 
     # Categorize models based on governance status
     models_in_bundles = [m for m in models if m.get("id") in deliverable_ids]
@@ -65,10 +86,16 @@ if deliverables and models:
     # Governed Bundles Details
     st.markdown("---")
     st.header("Governed Bundles Details")
-    if models_in_bundles:
-        st.subheader("Models in Governed Bundles")
-        for model in models_in_bundles:
-            st.write(f"- **Name**: {model['name']}, **Project**: {model['project']['name']}, **Owner**: {model['ownerUsername']}")
+    if deliverables:
+        for deliverable in deliverables:
+            st.subheader(f"Deliverable: {deliverable['name']} (ID: {deliverable['id']})")
+            attachments = deliverable_attachments.get(deliverable["id"], [])
+            if attachments:
+                st.write("**Attachments:**")
+                for attachment in attachments:
+                    st.write(f"- **Name:** {attachment['name']}, **Type:** {attachment['type']}")
+            else:
+                st.write("No attachments found for this deliverable.")
 
     # Models Not in Bundles
     st.markdown("---")
