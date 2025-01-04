@@ -7,7 +7,7 @@ API_HOST = os.getenv("API_HOST", "https://se-demo.domino.tech")
 API_KEY = os.getenv("API_KEY", "2627b46253dfea3a329b8c5b84748b98d5b3c5ffe6eb02a55f7177231fc8c1c4")
 
 # Streamlit app title
-st.title("Policy Stages Extractor")
+st.title("Policy Stages Debugging")
 
 # Function to fetch deliverables
 @st.cache_data
@@ -25,22 +25,14 @@ def fetch_deliverables():
         st.error(f"An exception occurred while fetching deliverables: {e}")
         return None
 
-# Function to extract policies from deliverables
-def extract_policies(deliverables):
-    policies = {}
-    for deliverable in deliverables:
-        policy_id = deliverable.get("policyId", "unknown")
-        policy_name = deliverable.get("policyName", "No Policy Name")
-        if policy_id != "unknown":
-            policies[policy_id] = policy_name
-    return policies
-
-# Function to fetch policy definition
-@st.cache_data
+# Function to fetch policy definition with detailed debugging
 def fetch_policy_definition(policy_id):
     try:
         url = f"{API_HOST}/governance/v1/policies/{policy_id}/definition"
+        st.write(f"Fetching policy definition: {url}")  # Debug URL
         response = requests.get(url, auth=(API_KEY, API_KEY))  # Basic Auth
+        st.write(f"Response Status Code: {response.status_code}")  # Debug Status Code
+        st.write(f"Response Text: {response.text}")  # Debug Raw Response
         if response.status_code != 200:
             st.error(f"Error fetching policy definition for {policy_id}: {response.status_code}")
             return None
@@ -49,7 +41,7 @@ def fetch_policy_definition(policy_id):
         st.error(f"An exception occurred while fetching policy definition for {policy_id}: {e}")
         return None
 
-# Fetch deliverables and extract policies
+# Main App Logic
 st.header("Fetching Deliverables")
 deliverables = fetch_deliverables()
 
@@ -58,14 +50,19 @@ if deliverables:
     st.write(f"Total Deliverables: {len(deliverables)}")
 
     st.header("Extracting Policies")
-    policies = extract_policies(deliverables)
+    policies = {}
+    for deliverable in deliverables:
+        policy_id = deliverable.get("policyId", "unknown")
+        policy_name = deliverable.get("policyName", "No Policy Name")
+        if policy_id != "unknown":
+            policies[policy_id] = policy_name
 
     if policies:
         st.subheader("Policies Extracted")
         for policy_id, policy_name in policies.items():
             st.write(f"Policy ID: {policy_id}, Policy Name: {policy_name}")
 
-        st.header("Fetching Policy Definitions and Stages")
+        st.header("Fetching Policy Definitions and Debugging")
         for policy_id, policy_name in policies.items():
             st.subheader(f"Policy: {policy_name}")
             policy_definition = fetch_policy_definition(policy_id)
