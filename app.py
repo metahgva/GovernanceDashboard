@@ -20,27 +20,13 @@ def fetch_deliverables():
     try:
         response = requests.get(
             f"{API_HOST}/guardrails/v1/deliverables",
-            auth=(API_KEY, API_KEY),  # Updated for auth
+            auth=(API_KEY, API_KEY),
         )
         response.raise_for_status()
         return response.json().get("data", [])
     except Exception as e:
         st.error(f"Error fetching deliverables: {e}")
         return []
-
-# Fetch deliverable details to get attachments
-@st.cache_data
-def fetch_deliverable_details(deliverable_id):
-    try:
-        response = requests.get(
-            f"{API_HOST}/guardrails/v1/deliverables/{deliverable_id}",
-            auth=(API_KEY, API_KEY),
-        )
-        response.raise_for_status()
-        return response.json()
-    except Exception as e:
-        st.error(f"Error fetching details for deliverable {deliverable_id}: {e}")
-        return None
 
 # Fetch registered models
 @st.cache_data
@@ -64,19 +50,22 @@ if deliverables and models:
     st.markdown("---")
     st.header("Summary")
 
-    # Extract deliverable IDs for cross-referencing
-    deliverable_ids = {d["id"] for d in deliverables}
-    deliverable_attachments = {}
-
-    # Fetch attachments for each deliverable
+    # Extract deliverable targets and cross-check with models
+    deliverable_targets = {}
     for deliverable in deliverables:
-        details = fetch_deliverable_details(deliverable["id"])
-        if details:
-            deliverable_attachments[deliverable["id"]] = details.get("attachments", [])
+        targets = deliverable.get("targets", [])
+        deliverable_targets[deliverable["id"]] = targets
 
-    # Categorize models based on governance status
-    models_in_bundles = [m for m in models if m.get("id") in deliverable_ids]
-    models_not_in_bundles = [m for m in models if m.get("id") not in deliverable_ids]
+    models_in_bundles = [
+        model for model in models if any(
+            model.get("id") == target.get("targetId") for deliverable_targets_list in deliverable_targets.values() for target in deliverable_targets_list
+        )
+    ]
+    models_not_in_bundles = [
+        model for model in models if all(
+            model.get("id") != target.get("targetId") for deliverable_targets_list in deliverable_targets.values() for target in deliverable_targets_list
+        )
+    ]
 
     # Metrics
     st.metric("Total Models", len(models))
@@ -89,13 +78,13 @@ if deliverables and models:
     if deliverables:
         for deliverable in deliverables:
             st.subheader(f"Deliverable: {deliverable['name']} (ID: {deliverable['id']})")
-            attachments = deliverable_attachments.get(deliverable["id"], [])
-            if attachments:
-                st.write("**Attachments:**")
-                for attachment in attachments:
-                    st.write(f"- **Name:** {attachment['name']}, **Type:** {attachment['type']}")
+            targets = deliverable_targets.get(deliverable["id"], [])
+            if targets:
+                st.write("**Targets (Attachments):**")
+                for target in targets:
+                    st.write(f"- **Name:** {target['name']}, **Type:** {target['type']}, **Target ID:** {target['targetId']}")
             else:
-                st.write("No attachments found for this deliverable.")
+                st.write("No targets found for this deliverable.")
 
     # Models Not in Bundles
     st.markdown("---")
