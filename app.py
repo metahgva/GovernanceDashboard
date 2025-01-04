@@ -1,70 +1,82 @@
-# Function to fetch registered models
+import streamlit as st
+import requests
+import os
+
+# Load API Host and Key from environment variables
+API_HOST = "https://se-demo.domino.tech"
+API_KEY = "2627b46253dfea3a329b8c5b84748b98d5b3c5ffe6eb02a55f7177231fc8c1c4"
+
+# Streamlit app title
+st.title("Deliverables and Models Dashboard")
+
+# Sidebar navigation
+st.sidebar.title("Navigation")
+st.sidebar.markdown("[Summary](#summary)", unsafe_allow_html=True)
+st.sidebar.markdown("[Governed Bundles Details](#governed-bundles-details)", unsafe_allow_html=True)
+
+# Fetch deliverables using Guardrails API
+@st.cache_data
+def fetch_deliverables():
+    try:
+        response = requests.get(
+            f"{API_HOST}/guardrails/v1/deliverables",
+            auth=(API_KEY, API_KEY),  # Updated for auth
+        )
+        response.raise_for_status()
+        return response.json().get("data", [])
+    except Exception as e:
+        st.error(f"Error fetching deliverables: {e}")
+        return []
+
+# Fetch registered models
 @st.cache_data
 def fetch_registered_models():
     try:
-        url = f"{API_HOST}/api/registeredmodels/v1"
-        response = requests.get(url, headers={"X-Domino-Api-Key": API_KEY})
-        if response.status_code != 200:
-            st.error(f"Error fetching registered models: {response.status_code} - {response.text}")
-            return []
+        response = requests.get(
+            f"{API_HOST}/api/registeredmodels/v1",
+            headers={"X-Domino-Api-Key": API_KEY},
+        )
+        response.raise_for_status()
         return response.json().get("items", [])
     except Exception as e:
-        st.error(f"An error occurred while fetching registered models: {e}")
+        st.error(f"Error fetching registered models: {e}")
         return []
 
-# Function to find models in and not in bundles
-def categorize_models_by_bundles(models, bundles):
-    models_in_bundles = []
-    models_not_in_bundles = []
+# Main logic
+deliverables = fetch_deliverables()
+models = fetch_registered_models()
 
-    # Collect model IDs in bundles
-    model_ids_in_bundles = {
-        model_version.get("modelId")
-        for bundle in bundles
-        for model_version in bundle.get("modelVersions", [])
-    }
+if deliverables and models:
+    st.markdown("---")
+    st.header("Summary")
 
-    for model in models:
-        model_id = model.get("project", {}).get("id")
-        if model_id in model_ids_in_bundles:
-            models_in_bundles.append(model)
-        else:
-            models_not_in_bundles.append(model)
+    # Extract deliverable IDs for cross-referencing
+    deliverable_ids = {d["id"] for d in deliverables}
 
-    return models_in_bundles, models_not_in_bundles
+    # Categorize models based on governance status
+    models_in_bundles = [m for m in models if m.get("id") in deliverable_ids]
+    models_not_in_bundles = [m for m in models if m.get("id") not in deliverable_ids]
 
-# Fetch data
-registered_models = fetch_registered_models()
-governed_bundles = fetch_deliverables()  # Already defined in your app
+    # Metrics
+    st.metric("Total Models", len(models))
+    st.metric("Models in Governed Bundles", len(models_in_bundles))
+    st.metric("Models Not in Bundles", len(models_not_in_bundles))
 
-# Categorize models
-models_in_bundles, models_not_in_bundles = categorize_models_by_bundles(registered_models, governed_bundles)
+    # Governed Bundles Details
+    st.markdown("---")
+    st.header("Governed Bundles Details")
+    if models_in_bundles:
+        st.subheader("Models in Governed Bundles")
+        for model in models_in_bundles:
+            st.write(f"- **Name**: {model['name']}, **Project**: {model['project']['name']}, **Owner**: {model['ownerUsername']}")
 
-# Display results
-st.markdown("---")
-st.header("Registered Models and Bundles")
+    # Models Not in Bundles
+    st.markdown("---")
+    st.header("Models Not in Bundles")
+    if models_not_in_bundles:
+        st.subheader("Models Not in Governed Bundles")
+        for model in models_not_in_bundles:
+            st.write(f"- **Name**: {model['name']}, **Project**: {model['project']['name']}, **Owner**: {model['ownerUsername']}")
 
-st.subheader("Summary")
-st.write(f"Total Registered Models: {len(registered_models)}")
-st.write(f"Models in Governed Bundles: {len(models_in_bundles)}")
-st.write(f"Models Not in Governed Bundles: {len(models_not_in_bundles)}")
-
-# Models in bundles
-st.subheader("Models in Governed Bundles")
-for model in models_in_bundles:
-    name = model.get("name", "N/A")
-    project_name = model.get("project", {}).get("name", "N/A")
-    owner = model.get("ownerUsername", "N/A")
-    link = f"{API_HOST}/models/{name}"  # Example link
-    st.write(f"- **Name:** {name}, **Project:** {project_name}, **Owner:** {owner}")
-    st.markdown(f"[View Model]({link})", unsafe_allow_html=True)
-
-# Models not in bundles
-st.subheader("Models Not in Governed Bundles")
-for model in models_not_in_bundles:
-    name = model.get("name", "N/A")
-    project_name = model.get("project", {}).get("name", "N/A")
-    owner = model.get("ownerUsername", "N/A")
-    link = f"{API_HOST}/models/{name}"  # Example link
-    st.write(f"- **Name:** {name}, **Project:** {project_name}, **Owner:** {owner}")
-    st.markdown(f"[View Model]({link})", unsafe_allow_html=True)
+else:
+    st.warning("No deliverables or models found.")
