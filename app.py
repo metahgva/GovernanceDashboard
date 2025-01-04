@@ -47,7 +47,11 @@ def fetch_tasks_for_project(project_id):
         if response.status_code != 200:
             st.error(f"Error fetching tasks for project {project_id}: {response.status_code}")
             return []
-        return response.json()
+        tasks = response.json()
+        if not isinstance(tasks, list):
+            st.error(f"Unexpected tasks structure for project {project_id}: {tasks}")
+            return []
+        return tasks
     except Exception as e:
         st.error(f"An error occurred while fetching tasks for project {project_id}: {e}")
         return []
@@ -87,17 +91,20 @@ else:
         # Fetch tasks for each project
         tasks = fetch_tasks_for_project(project_id)
         for task in tasks:
-            description = task.get("description", "")
-            task_name = description if description else "Unnamed Task"  # Use description as the task name
-            if "Approval requested Stage" in description:
-                bundle_name, bundle_link = parse_task_description(description)
-                if bundle_name and bundle_link:
-                    approval_tasks.append({
-                        "task_name": task_name,
-                        "stage": description.split("Stage")[1].split(":")[0].strip(),
-                        "bundle_name": bundle_name,
-                        "bundle_link": bundle_link,
-                    })
+            if isinstance(task, dict):
+                description = task.get("description", "")
+                task_name = description if description else "Unnamed Task"  # Use description as the task name
+                if "Approval requested Stage" in description:
+                    bundle_name, bundle_link = parse_task_description(description)
+                    if bundle_name and bundle_link:
+                        approval_tasks.append({
+                            "task_name": task_name,
+                            "stage": description.split("Stage")[1].split(":")[0].strip(),
+                            "bundle_name": bundle_name,
+                            "bundle_link": bundle_link,
+                        })
+            else:
+                st.error(f"Unexpected task format: {task}")
 
     # Display Approval Tasks
     st.markdown("---")
