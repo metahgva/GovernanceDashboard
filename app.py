@@ -68,6 +68,7 @@ def plot_stages(policy_name, stages, bundle_data):
     ax.set_title(f"Policy Stages Visualization for {policy_name}", fontsize=14)
     ax.set_xlabel("Stages", fontsize=12)
     ax.set_ylabel("Number of Bundles", fontsize=12)
+    ax.yaxis.get_major_locator().set_params(integer=True)  # Force Y-axis to use whole numbers
     plt.xticks(rotation=45, ha="right")
     plt.tight_layout()
     return fig
@@ -90,32 +91,32 @@ if deliverables:
         for policy_id, policy_name in policies.items():
             st.write(f"- {policy_name} (ID: {policy_id})")
 
-        # Select a policy to visualize
-        selected_policy_id = st.selectbox("Select a Policy to Visualize", list(policies.keys()))
-        selected_policy_name = policies[selected_policy_id]
+        # Visualize all policies
+        for policy_id, policy_name in policies.items():
+            # Fetch policy details
+            policy_details = fetch_policy_details(policy_id)
+            if policy_details:
+                stages = policy_details.get("stages", [])
+                if stages:
+                    # Collect bundle data per stage
+                    bundle_data_per_stage = defaultdict(list)
+                    for deliverable in deliverables:
+                        if deliverable.get("policyId") == policy_id:
+                            stage_name = deliverable.get("stage", "Unknown Stage")
+                            bundle_data_per_stage[stage_name].append({
+                                "name": deliverable.get("name", "Unnamed Bundle"),
+                                "stageUpdateTime": deliverable.get("stageUpdateTime", "N/A")
+                            })
 
-        # Fetch policy details
-        policy_details = fetch_policy_details(selected_policy_id)
-        if policy_details:
-            stages = policy_details.get("stages", [])
-            if stages:
-                # Collect bundle data per stage
-                bundle_data_per_stage = defaultdict(list)
-                for deliverable in deliverables:
-                    if deliverable.get("policyId") == selected_policy_id:
-                        stage_name = deliverable.get("stage", "Unknown Stage")
-                        bundle_data_per_stage[stage_name].append({
-                            "name": deliverable.get("name", "Unnamed Bundle"),
-                            "stageUpdateTime": deliverable.get("stageUpdateTime", "N/A")
-                        })
-
-                # Plot the stages and bundles
-                fig = plot_stages(selected_policy_name, stages, bundle_data_per_stage)
-                st.pyplot(fig)
+                    # Plot the stages and bundles
+                    st.markdown("---")
+                    st.subheader(f"Policy: {policy_name}")
+                    fig = plot_stages(policy_name, stages, bundle_data_per_stage)
+                    st.pyplot(fig)
+                else:
+                    st.warning(f"No stages found for the policy {policy_name}.")
             else:
-                st.warning(f"No stages found for the policy {selected_policy_name}.")
-        else:
-            st.error(f"Could not fetch details for policy {selected_policy_name}.")
+                st.error(f"Could not fetch details for policy {policy_name}.")
     else:
         st.warning("No policies found in the deliverables.")
 else:
