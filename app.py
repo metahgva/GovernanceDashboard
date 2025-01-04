@@ -1,52 +1,70 @@
-import requests
+# Function to fetch registered models
+@st.cache_data
+def fetch_registered_models():
+    try:
+        url = f"{API_HOST}/api/registeredmodels/v1"
+        response = requests.get(url, headers={"X-Domino-Api-Key": API_KEY})
+        if response.status_code != 200:
+            st.error(f"Error fetching registered models: {response.status_code} - {response.text}")
+            return []
+        return response.json().get("items", [])
+    except Exception as e:
+        st.error(f"An error occurred while fetching registered models: {e}")
+        return []
 
-# Define your Domino API URLs
-registered_models_url = "https://se-demo.domino.tech/api/registeredmodels/v1"
-deliverables_url = "https://se-demo.domino.tech/api/deliverables/v1"
+# Function to find models in and not in bundles
+def categorize_models_by_bundles(models, bundles):
+    models_in_bundles = []
+    models_not_in_bundles = []
 
-# Fetch registered models
-registered_models_response = requests.get(registered_models_url, headers={"Authorization": "Bearer <your_api_key>"})
-models = registered_models_response.json().get("items", [])
+    # Collect model IDs in bundles
+    model_ids_in_bundles = {
+        model_version.get("modelId")
+        for bundle in bundles
+        for model_version in bundle.get("modelVersions", [])
+    }
 
-# Fetch deliverables (bundles)
-deliverables_response = requests.get(deliverables_url, headers={"Authorization": "Bearer <your_api_key>"})
-deliverables = deliverables_response.json().get("items", [])
+    for model in models:
+        model_id = model.get("project", {}).get("id")
+        if model_id in model_ids_in_bundles:
+            models_in_bundles.append(model)
+        else:
+            models_not_in_bundles.append(model)
 
-# Extract model IDs in deliverables
-model_ids_in_bundles = set()
-for deliverable in deliverables:
-    model_versions = deliverable.get("modelVersions", [])
-    for model_version in model_versions:
-        model_id = model_version.get("modelId")
-        if model_id:
-            model_ids_in_bundles.add(model_id)
+    return models_in_bundles, models_not_in_bundles
 
-# Classify models
-models_in_bundle = []
-models_not_in_bundle = []
+# Fetch data
+registered_models = fetch_registered_models()
+governed_bundles = fetch_deliverables()  # Already defined in your app
 
-for model in models:
-    model_id = model.get("project", {}).get("id")
+# Categorize models
+models_in_bundles, models_not_in_bundles = categorize_models_by_bundles(registered_models, governed_bundles)
+
+# Display results
+st.markdown("---")
+st.header("Registered Models and Bundles")
+
+st.subheader("Summary")
+st.write(f"Total Registered Models: {len(registered_models)}")
+st.write(f"Models in Governed Bundles: {len(models_in_bundles)}")
+st.write(f"Models Not in Governed Bundles: {len(models_not_in_bundles)}")
+
+# Models in bundles
+st.subheader("Models in Governed Bundles")
+for model in models_in_bundles:
     name = model.get("name", "N/A")
     project_name = model.get("project", {}).get("name", "N/A")
     owner = model.get("ownerUsername", "N/A")
-    model_link = f"https://se-demo.domino.tech/models/{name}"  # Example link format
+    link = f"{API_HOST}/models/{name}"  # Example link
+    st.write(f"- **Name:** {name}, **Project:** {project_name}, **Owner:** {owner}")
+    st.markdown(f"[View Model]({link})", unsafe_allow_html=True)
 
-    if model_id in model_ids_in_bundles:
-        models_in_bundle.append({"name": name, "project": project_name, "owner": owner, "link": model_link})
-    else:
-        models_not_in_bundle.append({"name": name, "project": project_name, "owner": owner, "link": model_link})
-
-# Summary
-print(f"Total Registered Models: {len(models)}")
-print(f"Models in Governed Bundle: {len(models_in_bundle)}")
-print(f"Models Not in Governed Bundle: {len(models_not_in_bundle)}")
-
-# Display tables
-print("\nModels in Governed Bundle:")
-for model in models_in_bundle:
-    print(f"Name: {model['name']}, Project: {model['project']}, Owner: {model['owner']}, Link: {model['link']}")
-
-print("\nModels Not in Governed Bundle:")
-for model in models_not_in_bundle:
-    print(f"Name: {model['name']}, Project: {model['project']}, Owner: {model['owner']}, Link: {model['link']}")
+# Models not in bundles
+st.subheader("Models Not in Governed Bundles")
+for model in models_not_in_bundles:
+    name = model.get("name", "N/A")
+    project_name = model.get("project", {}).get("name", "N/A")
+    owner = model.get("ownerUsername", "N/A")
+    link = f"{API_HOST}/models/{name}"  # Example link
+    st.write(f"- **Name:** {name}, **Project:** {project_name}, **Owner:** {owner}")
+    st.markdown(f"[View Model]({link})", unsafe_allow_html=True)
