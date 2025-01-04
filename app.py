@@ -1,52 +1,52 @@
 import requests
-import streamlit as st
-import os
 
-# Load API Host and Key
-API_HOST = os.getenv("API_HOST", "https://se-demo.domino.tech")
-API_KEY = os.getenv("API_KEY", "2627b46253dfea3a329b8c5b84748b98d5b3c5ffe6eb02a55f7177231fc8c1c4")
+# Define your Domino API URLs
+registered_models_url = "https://se-demo.domino.tech/api/registeredmodels/v1"
+deliverables_url = "https://se-demo.domino.tech/api/deliverables/v1"
 
-# Function to fetch registered models
-def fetch_registered_models():
-    try:
-        url = f"{API_HOST}/api/registeredmodels/v1"
-        headers = {"X-Domino-Api-Key": API_KEY}
-        response = requests.get(url, headers=headers)
+# Fetch registered models
+registered_models_response = requests.get(registered_models_url, headers={"Authorization": "Bearer <your_api_key>"})
+models = registered_models_response.json().get("items", [])
 
-        # Debugging info
-        st.write("API Host:", API_HOST)
-        st.write("API Key (partial):", API_KEY[:5] + "****")
-        st.write("Request URL:", url)
-        st.write("Response Status Code:", response.status_code)
-        st.write("Response Text:", response.text)
+# Fetch deliverables (bundles)
+deliverables_response = requests.get(deliverables_url, headers={"Authorization": "Bearer <your_api_key>"})
+deliverables = deliverables_response.json().get("items", [])
 
-        if response.status_code != 200:
-            st.error(f"Error fetching registered models: {response.status_code} - {response.text}")
-            return None
+# Extract model IDs in deliverables
+model_ids_in_bundles = set()
+for deliverable in deliverables:
+    model_versions = deliverable.get("modelVersions", [])
+    for model_version in model_versions:
+        model_id = model_version.get("modelId")
+        if model_id:
+            model_ids_in_bundles.add(model_id)
 
-        models = response.json().get("data", [])
-        return models
+# Classify models
+models_in_bundle = []
+models_not_in_bundle = []
 
-    except Exception as e:
-        st.error(f"An error occurred while fetching registered models: {e}")
-        return None
+for model in models:
+    model_id = model.get("project", {}).get("id")
+    name = model.get("name", "N/A")
+    project_name = model.get("project", {}).get("name", "N/A")
+    owner = model.get("ownerUsername", "N/A")
+    model_link = f"https://se-demo.domino.tech/models/{name}"  # Example link format
 
-# Streamlit application
-st.title("Domino Registered Models")
-
-models = fetch_registered_models()
-
-if models:
-    st.subheader("Registered Models")
-    if len(models) > 0:
-        for model in models:
-            model_name = model.get("name", "Unnamed Model")
-            model_description = model.get("description", "No description provided")
-            model_created_at = model.get("createdAt", "N/A")
-            st.markdown(f"### {model_name}")
-            st.write(f"**Description:** {model_description}")
-            st.write(f"**Created At:** {model_created_at}")
+    if model_id in model_ids_in_bundles:
+        models_in_bundle.append({"name": name, "project": project_name, "owner": owner, "link": model_link})
     else:
-        st.write("No registered models found.")
-else:
-    st.write("Failed to fetch registered models.")
+        models_not_in_bundle.append({"name": name, "project": project_name, "owner": owner, "link": model_link})
+
+# Summary
+print(f"Total Registered Models: {len(models)}")
+print(f"Models in Governed Bundle: {len(models_in_bundle)}")
+print(f"Models Not in Governed Bundle: {len(models_not_in_bundle)}")
+
+# Display tables
+print("\nModels in Governed Bundle:")
+for model in models_in_bundle:
+    print(f"Name: {model['name']}, Project: {model['project']}, Owner: {model['owner']}, Link: {model['link']}")
+
+print("\nModels Not in Governed Bundle:")
+for model in models_not_in_bundle:
+    print(f"Name: {model['name']}, Project: {model['project']}, Owner: {model['owner']}, Link: {model['link']}")
