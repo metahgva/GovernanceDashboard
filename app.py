@@ -14,10 +14,9 @@ st.title("Deliverables and Projects Dashboard")
 # Sidebar navigation
 st.sidebar.title("Navigation")
 st.sidebar.markdown("[Summary](#summary)", unsafe_allow_html=True)
-st.sidebar.markdown("[Governed Bundles](#governed-bundles)", unsafe_allow_html=True)
-st.sidebar.markdown("[Projects Without Bundles](#projects-without-bundles)", unsafe_allow_html=True)
 st.sidebar.markdown("[Policies Adoption](#policies-adoption)", unsafe_allow_html=True)
-st.sidebar.markdown("[Detailed Bundles](#detailed-bundles)", unsafe_allow_html=True)
+st.sidebar.markdown("[Projects Without Bundles](#projects-without-bundles)", unsafe_allow_html=True)
+st.sidebar.markdown("[Governed Bundles Details](#governed-bundles-details)", unsafe_allow_html=True)
 
 # Sidebar API Configuration
 st.sidebar.header("API Configuration")
@@ -42,18 +41,19 @@ def fetch_deliverables():
         st.error(f"An error occurred while fetching deliverables: {e}")
         return None
 
-# Function to fetch policy details
-def fetch_policy_details(policy_id):
+# Function to fetch all projects
+@st.cache_data
+def fetch_all_projects():
     try:
-        url = f"{API_HOST}/guardrails/v1/policies/{policy_id}"
-        response = requests.get(url, auth=(API_KEY, API_KEY))
+        url = f"{API_HOST}/v4/projects"
+        response = requests.get(url, headers={"X-Domino-Api-Key": API_KEY})
         if response.status_code != 200:
-            st.error(f"Error fetching policy details for {policy_id}: {response.status_code}")
-            return None
+            st.error(f"Error fetching projects: {response.status_code} - {response.text}")
+            return []
         return response.json()
     except Exception as e:
-        st.error(f"An exception occurred while fetching policy details for {policy_id}: {e}")
-        return None
+        st.error(f"An error occurred while fetching projects: {e}")
+        return []
 
 # Function to calculate project stats
 def calculate_project_stats(all_projects, deliverables):
@@ -73,6 +73,19 @@ def calculate_project_stats(all_projects, deliverables):
 
     return non_quick_start_projects, quick_start_projects, projects_without_bundles
 
+# Function to fetch policy details
+def fetch_policy_details(policy_id):
+    try:
+        url = f"{API_HOST}/guardrails/v1/policies/{policy_id}"
+        response = requests.get(url, auth=(API_KEY, API_KEY))
+        if response.status_code != 200:
+            st.error(f"Error fetching policy details for {policy_id}: {response.status_code}")
+            return None
+        return response.json()
+    except Exception as e:
+        st.error(f"An exception occurred while fetching policy details for {policy_id}: {e}")
+        return None
+
 # Function to visualize policies with stages
 def plot_policy_stages(policy_name, stages, bundle_data):
     stage_names = [stage["name"] for stage in stages]
@@ -89,6 +102,7 @@ def plot_policy_stages(policy_name, stages, bundle_data):
     return fig
 
 # Main Dashboard Logic
+all_projects = fetch_all_projects()
 deliverables = fetch_deliverables()
 
 if deliverables:
@@ -97,10 +111,14 @@ if deliverables:
     st.header("Summary")
     total_policies = len(set(bundle.get("policyName", "No Policy Name") for bundle in deliverables))
     total_bundles = len(deliverables)
+    non_quick_start_projects, quick_start_projects, projects_without_bundles = calculate_project_stats(
+        all_projects, deliverables
+    )
+    total_projects_without_bundles = len(projects_without_bundles)
 
     cols = st.columns(2)
     cols[0].metric("Total Policies", total_policies)
-    cols[1].metric("Total Bundles", total_bundles)
+    cols[1].metric("Projects Without Bundles", total_projects_without_bundles)
 
     # Policies Adoption Section
     st.markdown("---")
@@ -134,42 +152,40 @@ if deliverables:
                         st.write(f"- **Stage: {stage_name}** ({len(bundles)})")
                         with st.expander(f"View Bundles in {stage_name}"):
                             for bundle in bundles:
-                                st.write(f"- {bundle['name']} (Moved: {bundle['stageUpdateTime']})")
+                                bundle_name = bundle['name']
+                                moved_date = bundle['stageUpdateTime']
+                                st.write(f"- {bundle_name} (Moved: {moved_date})")
                 else:
                     st.warning(f"No stages found for policy {policy_name}.")
             else:
                 st.error(f"Could not fetch details for policy {policy_name}.")
-                
-                
-           # Projects Without Bundles Section
-            st.markdown("---")
-            st.header("Projects Without Bundles")
-            if not projects_without_bundles:
-                st.write("All projects have bundles.")
-            else:
-                with st.expander(f"Projects Without Bundles ({len(projects_without_bundles)})"):
-                    for project in projects_without_bundles:
-                        project_name = project.get("name", "unknown_project")
-                        owner_username = project.get("ownerUsername", "unknown_user")
-                        project_link = f"{API_HOST}/u/{owner_username}/{project_name}/overview"
-                        st.markdown(f"- [{project_name}]({project_link})", unsafe_allow_html=True)
-                        
-            # Governed Bundles Section
-            st.markdown("---")
-            st.header("Governed Bundles Details")
-            for deliverable in deliverables:
-                bundle_name = deliverable.get("name", "Unnamed Bundle")
-                status = deliverable.get("state", "Unknown")
-                policy_name = deliverable.get("policyName", "Unknown")
-                stage = deliverable.get("stage", "Unknown")
-                project_name = deliverable.get("projectName", "Unnamed Project")
-                owner_username = deliverable.get("createdBy", {}).get("username", "unknown_user")
-                bundle_link = f"{API_HOST}/u/{owner_username}/{project_name}/overview"
-                st.subheader(bundle_name)
-                st.markdown(f"[View Bundle Details]({bundle_link})", unsafe_allow_html=True)
-                st.write(f"**Status:** {status}")
-                st.write(f"**Policy Name:** {policy_name}")
-                st.write(f"**Stage:** {stage}")
-                
-else:
-    st.warning("No deliverables found or an error occurred.")
+
+    # Projects Without Bundles Section
+    st.markdown("---")
+    st.header("Projects Without Bundles")
+    if not projects_without_bundles:
+        st.write("All projects have bundles.")
+    else:
+        with st.expander(f"Projects Without Bundles ({len(projects_without_bundles)})"):
+            for project in projects_without_bundles:
+                project_name = project.get("name", "unknown_project")
+                owner_username = project.get("ownerUsername", "unknown_user")
+                project_link = f"{API_HOST}/u/{owner_username}/{project_name}/overview"
+                st.markdown(f"- [{project_name}]({project_link})", unsafe_allow_html=True)
+
+    # Governed Bundles Section
+    st.markdown("---")
+    st.header("Governed Bundles Details")
+    for deliverable in deliverables:
+        bundle_name = deliverable.get("name", "Unnamed Bundle")
+        status = deliverable.get("state", "Unknown")
+        policy_name = deliverable.get("policyName", "Unknown")
+        stage = deliverable.get("stage", "Unknown")
+        project_name = deliverable.get("projectName", "Unnamed Project")
+        owner_username = deliverable.get("createdBy", {}).get("username", "unknown_user")
+        bundle_link = f"{API_HOST}/u/{owner_username}/{project_name}/overview"
+        st.subheader(bundle_name)
+        st.markdown(f"[View Bundle Details]({bundle_link})", unsafe_allow_html=True)
+        st.write(f"**Status:** {status}")
+        st.write(f"**Policy Name:** {policy_name}")
+        st.write(f"**Stage:** {stage}")
