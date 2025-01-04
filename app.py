@@ -3,7 +3,6 @@ import requests
 import os
 import re
 
-
 # Load API Host and Key from environment variables or fallback values
 API_HOST = os.getenv("API_HOST", "https://se-demo.domino.tech")
 API_KEY = os.getenv("API_KEY", "2627b46253dfea3a329b8c5b84748b98d5b3c5ffe6eb02a55f7177231fc8c1c4")
@@ -68,18 +67,14 @@ else:
 
         # Fetch tasks for each project
         tasks = fetch_tasks_for_project(project_id)
-        if not tasks:
-            st.write(f"No tasks found for Project ID: {project_id}")  # Debug: Log if no tasks are found
-            continue
-
-        # Filter tasks with "Approval requested Stage" in description
         for task in tasks:
             description = task.get("description", "")
+            task_name = task.get("name", "Unnamed Task")  # Fetch the task name
             if "Approval requested Stage" in description:
                 bundle_name, bundle_link = parse_task_description(description)
                 if bundle_name and bundle_link:
                     approval_tasks.append({
-                        "task_name": task.get("name", "Unnamed Task"),
+                        "task_name": task_name,
                         "stage": description.split("Stage")[1].split(":")[0].strip(),
                         "bundle_name": bundle_name,
                         "bundle_link": bundle_link,
