@@ -37,24 +37,23 @@ def fetch_deliverables():
         if response.status_code != 200:
             st.error(f"Error fetching deliverables: {response.status_code} - {response.text}")
             return None
-        return response.json()
+        return response.json().get("data", [])
     except Exception as e:
         st.error(f"An error occurred while fetching deliverables: {e}")
         return None
 
-# Function to fetch all projects
-@st.cache_data
-def fetch_all_projects():
+# Function to fetch policy details
+def fetch_policy_details(policy_id):
     try:
-        url = f"{API_HOST}/v4/projects"
-        response = requests.get(url, headers={"X-Domino-Api-Key": API_KEY})
+        url = f"{API_HOST}/guardrails/v1/policies/{policy_id}"
+        response = requests.get(url, auth=(API_KEY, API_KEY))
         if response.status_code != 200:
-            st.error(f"Error fetching projects: {response.status_code} - {response.text}")
-            return []
+            st.error(f"Error fetching policy details for {policy_id}: {response.status_code}")
+            return None
         return response.json()
     except Exception as e:
-        st.error(f"An error occurred while fetching projects: {e}")
-        return []
+        st.error(f"An exception occurred while fetching policy details for {policy_id}: {e}")
+        return None
 
 # Function to calculate project stats
 def calculate_project_stats(all_projects, deliverables):
@@ -74,99 +73,71 @@ def calculate_project_stats(all_projects, deliverables):
 
     return non_quick_start_projects, quick_start_projects, projects_without_bundles
 
-# Function to fetch policy details using the Guardrails `/policies/{id}` endpoint
-def fetch_policy_details(policy_id):
-    try:
-        url = f"{API_HOST}/guardrails/v1/policies/{policy_id}"
-        response = requests.get(url, auth=(API_KEY, API_KEY))
-        if response.status_code != 200:
-            st.error(f"Error fetching policy details for {policy_id}: {response.status_code}")
-            return None
-        return response.json()
-    except Exception as e:
-        st.error(f"An exception occurred while fetching policy details for {policy_id}: {e}")
-        return None
-
 # Function to visualize policies with stages
-def plot_policy_stages(policy_name, stage_counts):
-    fig, ax = plt.subplots()
-    ax.bar(stage_counts.keys(), stage_counts.values(), color="skyblue")
+def plot_policy_stages(policy_name, stages, bundle_data):
+    stage_names = [stage["name"] for stage in stages]
+    bundle_counts = [len(bundle_data.get(stage["name"], [])) for stage in stages]
+
+    fig, ax = plt.subplots(figsize=(10, 6))
+    ax.bar(stage_names, bundle_counts, color="skyblue", edgecolor="black")
     ax.set_title(f"Policy: {policy_name}")
     ax.set_xlabel("Stages")
     ax.set_ylabel("Number of Bundles")
-    ax.yaxis.get_major_locator().set_params(integer=True)
+    ax.yaxis.get_major_locator().set_params(integer=True)  # Force Y-axis to use whole numbers
+    plt.xticks(rotation=45, ha="right")
+    plt.tight_layout()
     return fig
 
 # Main Dashboard Logic
-all_projects = fetch_all_projects()
-deliverables_data = fetch_deliverables()
+deliverables = fetch_deliverables()
 
-if not all_projects:
-    st.error("No projects retrieved from the API.")
+if deliverables:
+    # Summary Section
+    st.markdown("---")
+    st.header("Summary")
+    total_policies = len(set(bundle.get("policyName", "No Policy Name") for bundle in deliverables))
+    total_bundles = len(deliverables)
+
+    cols = st.columns(2)
+    cols[0].metric("Total Policies", total_policies)
+    cols[1].metric("Total Bundles", total_bundles)
+
+    # Policies Adoption Section
+    st.markdown("---")
+    st.header("Policies Adoption")
+    policies = {bundle.get("policyId"): bundle.get("policyName") for bundle in deliverables if bundle.get("policyId")}
+
+    if policies:
+        for policy_id, policy_name in policies.items():
+            st.subheader(f"Policy: {policy_name}")
+            policy_details = fetch_policy_details(policy_id)
+
+            if policy_details:
+                stages = policy_details.get("stages", [])
+                if stages:
+                    # Collect bundle data per stage
+                    bundle_data_per_stage = defaultdict(list)
+                    for deliverable in deliverables:
+                        if deliverable.get("policyId") == policy_id:
+                            stage_name = deliverable.get("stage", "Unknown Stage")
+                            bundle_data_per_stage[stage_name].append({
+                                "name": deliverable.get("name", "Unnamed Bundle"),
+                                "stageUpdateTime": deliverable.get("stageUpdateTime", "N/A")
+                            })
+
+                    # Plot the stages and bundles
+                    fig = plot_policy_stages(policy_name, stages, bundle_data_per_stage)
+                    st.pyplot(fig)
+
+                    # List bundles in each stage
+                    for stage_name, bundles in bundle_data_per_stage.items():
+                        st.write(f"- **Stage: {stage_name}** ({len(bundles)})")
+                        with st.expander(f"View Bundles in {stage_name}"):
+                            for bundle in bundles:
+                                st.write(f"- {bundle['name']} (Moved: {bundle['stageUpdateTime']})")
+                else:
+                    st.warning(f"No stages found for policy {policy_name}.")
+            else:
+                st.error(f"Could not fetch details for policy {policy_name}.")
 else:
-    if deliverables_data:
-        deliverables = deliverables_data.get("data", [])
-        if not deliverables:
-            st.warning("No deliverables found.")
-        else:
-            # Summary Section
-            st.markdown("---")
-            st.header("Summary")
-            total_policies = len(set(bundle.get("policyName", "No Policy Name") for bundle in deliverables))
-            total_bundles = len(deliverables)
-            non_quick_start_projects, quick_start_projects, projects_without_bundles = calculate_project_stats(
-                all_projects, deliverables
-            )
-            total_projects = len(non_quick_start_projects)
-            total_bundled_projects = len(non_quick_start_projects) - len(projects_without_bundles)
-            total_projects_without_bundles = len(projects_without_bundles)
-
-            cols = st.columns(4)
-            cols[0].metric("Total Policies", total_policies)
-            cols[1].metric("Total Bundles", total_bundles)
-            cols[2].metric("Projects with Bundles", total_bundled_projects)
-            cols[3].metric("Projects without Bundles", total_projects_without_bundles)
-
-            # Policies Adoption Section
-            st.markdown("---")
-            st.header("Policies Adoption")
-            policies = {bundle.get("policyId"): bundle.get("policyName") for bundle in deliverables if bundle.get("policyId")}
-
-            if policies:
-                for policy_id, policy_name in policies.items():
-                    st.subheader(f"Policy: {policy_name}")
-                    policy_details = fetch_policy_details(policy_id)
-
-                    if policy_details:
-                        stages = policy_details.get("stages", [])
-                        if stages:
-                            # Create a stage count dictionary
-                            stage_counts = defaultdict(int)
-                            for stage in stages:
-                                stage_name = stage["name"]
-                                stage_counts[stage_name] += len([
-                                    bundle for bundle in deliverables
-                                    if bundle.get("policyId") == policy_id and bundle.get("stage") == stage_name
-                                ])
-
-                            # Visualize the stages
-                            st.pyplot(plot_policy_stages(policy_name, stage_counts))
-
-                            # List bundles in each stage
-                            for stage_name, count in stage_counts.items():
-                                bundles_in_stage = [
-                                    bundle for bundle in deliverables
-                                    if bundle.get("policyId") == policy_id and bundle.get("stage") == stage_name
-                                ]
-                                st.write(f"- **Stage: {stage_name}** ({count})")
-                                with st.expander(f"View Bundles in {stage_name}"):
-                                    for bundle in bundles_in_stage:
-                                        bundle_name = bundle.get("name", "Unnamed Bundle")
-                                        project_name = bundle.get("projectName", "unknown_project")
-                                        owner_username = bundle.get("createdBy", {}).get("username", "unknown_user")
-                                        bundle_link = f"{API_HOST}/u/{owner_username}/{project_name}/overview"
-                                        st.markdown(f"- [{bundle_name}]({bundle_link})", unsafe_allow_html=True)
-                        else:
-                            st.warning(f"No stages found for policy {policy_name}.")
-                    else:
-                        st.error(f"Could not fetch details for policy {policy_name}.")
+    st.warning("No deliverables found or an error occurred.")
