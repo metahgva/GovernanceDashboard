@@ -1,21 +1,35 @@
 import streamlit as st
 import requests
 import os
-import re
+from collections import defaultdict
 
 # Load API Host and Key from environment variables or fallback values
 API_HOST = os.getenv("API_HOST", "https://se-demo.domino.tech")
 API_KEY = os.getenv("API_KEY", "2627b46253dfea3a329b8c5b84748b98d5b3c5ffe6eb02a55f7177231fc8c1c4")
 
 # Streamlit app title
-st.title("Approval Requested Tasks")
+st.title("Tasks with Approval Requests Dashboard")
+
+# Sidebar navigation
+st.sidebar.title("Navigation")
+st.sidebar.markdown("[Summary](#summary)", unsafe_allow_html=True)
+st.sidebar.markdown("[Approval Tasks](#tasks-with-approval-requests)", unsafe_allow_html=True)
+
+# Sidebar API Configuration
+st.sidebar.header("API Configuration")
+st.sidebar.write(f"API Host: {API_HOST}")
+st.sidebar.write(f"API Key: {API_KEY[:5]}{'*' * (len(API_KEY) - 5)}")  # Masked for security
+if not API_KEY:
+    st.sidebar.error("API Key is not set. Please configure the environment variable.")
 
 # Function to fetch deliverables
 @st.cache_data
 def fetch_deliverables():
     try:
-        url = f"{API_HOST}/guardrails/v1/deliverables"
-        response = requests.get(url, auth=(API_KEY, API_KEY))
+        response = requests.get(
+            f"{API_HOST}/guardrails/v1/deliverables",
+            auth=(API_KEY, API_KEY),
+        )
         if response.status_code != 200:
             st.error(f"Error fetching deliverables: {response.status_code} - {response.text}")
             return []
@@ -25,6 +39,7 @@ def fetch_deliverables():
         return []
 
 # Function to fetch tasks for a project
+@st.cache_data
 def fetch_tasks_for_project(project_id):
     try:
         url = f"{API_HOST}/api/projects/v1/projects/{project_id}/goals"
@@ -32,19 +47,23 @@ def fetch_tasks_for_project(project_id):
         if response.status_code != 200:
             st.error(f"Error fetching tasks for project {project_id}: {response.status_code}")
             return []
-        return response.json().get("goals", [])
+        return response.json()
     except Exception as e:
         st.error(f"An error occurred while fetching tasks for project {project_id}: {e}")
         return []
 
-# Extract bundle name and link from task description
+# Function to parse task description and extract bundle name and link
 def parse_task_description(description):
-    match = re.search(r"\[([^\]]+)\]\(([^)]+)\)", description)
-    if match:
-        bundle_name = match.group(1)
-        bundle_link = f"{API_HOST}{match.group(2)}"
+    try:
+        start = description.find("[")
+        end = description.find("]")
+        bundle_name = description[start + 1 : end]
+        link_start = description.find("(")
+        link_end = description.find(")")
+        bundle_link = description[link_start + 1 : link_end]
         return bundle_name, bundle_link
-    return None, None
+    except Exception:
+        return None, None
 
 # Main App Logic
 deliverables = fetch_deliverables()
@@ -69,7 +88,7 @@ else:
         tasks = fetch_tasks_for_project(project_id)
         for task in tasks:
             description = task.get("description", "")
-            task_name = task.get("name", "Unnamed Task")  # Fetch the task name
+            task_name = description if description else "Unnamed Task"  # Use description as the task name
             if "Approval requested Stage" in description:
                 bundle_name, bundle_link = parse_task_description(description)
                 if bundle_name and bundle_link:
@@ -81,6 +100,7 @@ else:
                     })
 
     # Display Approval Tasks
+    st.markdown("---")
     st.header("Tasks with Approval Requests")
     if approval_tasks:
         for task in approval_tasks:
