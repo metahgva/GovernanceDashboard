@@ -139,5 +139,37 @@ if deliverables:
                     st.warning(f"No stages found for policy {policy_name}.")
             else:
                 st.error(f"Could not fetch details for policy {policy_name}.")
+                
+                
+           # Projects Without Bundles Section
+            st.markdown("---")
+            st.header("Projects Without Bundles")
+            if not projects_without_bundles:
+                st.write("All projects have bundles.")
+            else:
+                with st.expander(f"Projects Without Bundles ({len(projects_without_bundles)})"):
+                    for project in projects_without_bundles:
+                        project_name = project.get("name", "unknown_project")
+                        owner_username = project.get("ownerUsername", "unknown_user")
+                        project_link = f"{API_HOST}/u/{owner_username}/{project_name}/overview"
+                        st.markdown(f"- [{project_name}]({project_link})", unsafe_allow_html=True)
+                        
+            # Governed Bundles Section
+            st.markdown("---")
+            st.header("Governed Bundles Details")
+            for deliverable in deliverables:
+                bundle_name = deliverable.get("name", "Unnamed Bundle")
+                status = deliverable.get("state", "Unknown")
+                policy_name = deliverable.get("policyName", "Unknown")
+                stage = deliverable.get("stage", "Unknown")
+                project_name = deliverable.get("projectName", "Unnamed Project")
+                owner_username = deliverable.get("createdBy", {}).get("username", "unknown_user")
+                bundle_link = f"{API_HOST}/u/{owner_username}/{project_name}/overview"
+                st.subheader(bundle_name)
+                st.markdown(f"[View Bundle Details]({bundle_link})", unsafe_allow_html=True)
+                st.write(f"**Status:** {status}")
+                st.write(f"**Policy Name:** {policy_name}")
+                st.write(f"**Stage:** {stage}")
+                
 else:
     st.warning("No deliverables found or an error occurred.")
