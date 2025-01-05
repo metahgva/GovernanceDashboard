@@ -133,15 +133,23 @@ if deliverables:
     # Models Overview Section
     st.markdown("---")
     st.header("Models Overview")
+
     models_table = []
     for model in models:
         model_name = model.get("name", "Unnamed Model")
         project_name = model.get("project", {}).get("name", "Unknown Project")
         owner = model.get("ownerUsername", "Unknown User")
-        governed = any(
-            (model_name, version.get("version")) in model_versions_in_bundles
-            for version in model.get("latestVersion", [])
-        )
+        latest_version = model.get("latestVersion", [])
+
+        # Ensure latest_version is iterable
+        if isinstance(latest_version, list):
+            governed = any(
+                (model_name, version.get("version")) in model_versions_in_bundles
+                for version in latest_version
+            )
+        else:
+            governed = (model_name, latest_version) in model_versions_in_bundles
+
         models_table.append([model_name, project_name, owner, "Yes" if governed else "No"])
 
     st.write("### Models Details")
@@ -150,5 +158,6 @@ if deliverables:
         "|------------|--------------|-------|-----------------|\n"
         + "\n".join(f"| {row[0]} | {row[1]} | {row[2]} | {row[3]} |" for row in models_table)
     )
+    
 else:
     st.warning("No deliverables found or an error occurred.")
