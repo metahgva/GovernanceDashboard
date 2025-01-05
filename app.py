@@ -3,7 +3,7 @@ import requests
 import os
 from collections import defaultdict
 import matplotlib.pyplot as plt
-import urllib.parse  # <--- For URL-encoding
+import urllib.parse  # For URL-encoding
 
 # Load API Host and Key from environment variables or fallback values
 API_HOST = os.getenv("API_HOST", "https://se-demo.domino.tech")
@@ -139,11 +139,13 @@ deliverables = fetch_deliverables()
 models = fetch_registered_models()
 
 if deliverables:
-    # Summary Section
+    # ----------------------------------------------------
+    #  Summary Section
+    # ----------------------------------------------------
     st.markdown("---")
     st.header("Summary")
 
-    # --- Existing metrics ---
+    # Existing summary metrics
     total_policies = len(set(bundle.get("policyName", "No Policy Name") for bundle in deliverables))
     total_bundles = len(deliverables)
     governed_bundles = [bundle for bundle in deliverables if bundle.get("policyName")]
@@ -174,18 +176,17 @@ if deliverables:
                         })
                         total_pending_tasks += 1
 
-    # Display old summary metrics
+    # Display original summary metrics
     cols = st.columns(3)
     cols[0].metric("Total Policies", total_policies)
     cols[1].metric("Total Bundles", total_bundles)
     cols[2].metric("Pending Tasks", total_pending_tasks)
 
-    # --- New summary metrics ---
+    # Additional summary metrics
     # 1) Count of registered models
     total_registered_models = len(models)
 
     # 2) Count of registered models that are part of a bundle (do not double count)
-    #    We store (model_name, model_version) pairs to ensure each version is counted distinctly.
     model_name_version_in_bundles = set()
     for deliverable in deliverables:
         for target in deliverable.get("targets", []):
@@ -195,10 +196,9 @@ if deliverables:
                 model_version = identifier.get("version")
                 if model_name and model_version:
                     model_name_version_in_bundles.add((model_name, model_version))
-
     total_models_in_bundles = len(model_name_version_in_bundles)
 
-    # 3) Total count of projects (from Domino API)
+    # 3) Total count of projects (from the Domino API)
     total_projects = len(all_projects)
 
     # 4) Count of projects with at least one bundle
@@ -209,7 +209,7 @@ if deliverables:
             project_ids_with_bundles.add(pid)
     projects_with_a_bundle = len(project_ids_with_bundles)
 
-    # Display new summary metrics
+    # Display the new summary metrics
     st.markdown("#### Additional Metrics")
     cols2 = st.columns(4)
     cols2[0].metric("Registered Models", total_registered_models)
@@ -217,49 +217,16 @@ if deliverables:
     cols2[2].metric("Total Projects", total_projects)
     cols2[3].metric("Projects w/ Bundle", projects_with_a_bundle)
 
-    # Deliverables and Associated Model Versions
-    st.header("Deliverables and Associated Model Versions")
-    deliverable_targets = {d["id"]: d.get("targets", []) for d in deliverables}
-
-    for deliverable in deliverables:
-        st.subheader(f"Deliverable: {deliverable['name']} (ID: {deliverable['id']})")
-        targets = deliverable_targets.get(deliverable["id"], [])
-        if targets:
-            model_links = []
-            for target in targets:
-                # Only process ModelVersion targets
-                if target.get("type") == "ModelVersion":
-                    identifier = target.get("identifier", {})
-                    model_name = identifier.get("name", "Unknown Model")
-                    version = identifier.get("version", "Unknown Version")
-                    created_by = target.get("createdBy", {}).get("userName", "unknown_user")
-                    project_name = deliverable.get("projectName", "Unknown Project")
-
-                    # URL-encode model_name and project_name
-                    encoded_model_name = urllib.parse.quote(model_name, safe="")
-                    encoded_project_name = urllib.parse.quote(project_name, safe="")
-
-                    # Construct a URL-safe link
-                    link = (
-                        f"{API_HOST}/u/{created_by}/{encoded_project_name}/model-registry/"
-                        f"{encoded_model_name}/model-card?version={version}"
-                    )
-                    model_links.append((model_name, version, link))
-
-            if model_links:
-                st.write("**ModelVersion Targets:**")
-                for model_name, version, link in model_links:
-                    st.write(f"- **Model Name:** {model_name}, **Version:** {version}")
-                    st.markdown(f"[View Model Card]({link})", unsafe_allow_html=True)
-            else:
-                st.write("No ModelVersion targets found.")
-        else:
-            st.write("No targets found for this deliverable.")
-
-    # Policies Adoption Section
+    # ----------------------------------------------------
+    #  Policies Adoption Section
+    # ----------------------------------------------------
     st.markdown("---")
     st.header("Policies Adoption")
-    policies = {bundle.get("policyId"): bundle.get("policyName") for bundle in deliverables if bundle.get("policyId")}
+    policies = {
+        bundle.get("policyId"): bundle.get("policyName")
+        for bundle in deliverables
+        if bundle.get("policyId")
+    }
 
     if policies:
         for policy_id, policy_name in policies.items():
@@ -274,29 +241,33 @@ if deliverables:
                     for deliverable in deliverables:
                         if deliverable.get("policyId") == policy_id:
                             stage_name = deliverable.get("stage", "Unknown Stage")
-                            bundle_data_per_stage[stage_name].append({
-                                "name": deliverable.get("name", "Unnamed Bundle"),
-                                "stageUpdateTime": deliverable.get("stageUpdateTime", "N/A")
-                            })
+                            bundle_data_per_stage[stage_name].append(
+                                {
+                                    "name": deliverable.get("name", "Unnamed Bundle"),
+                                    "stageUpdateTime": deliverable.get("stageUpdateTime", "N/A"),
+                                }
+                            )
 
                     # Plot the stages and bundles
                     fig = plot_policy_stages(policy_name, stages, bundle_data_per_stage)
                     st.pyplot(fig)
 
                     # List bundles in each stage
-                    for stage_name, bundles in bundle_data_per_stage.items():
-                        st.write(f"- **Stage: {stage_name}** ({len(bundles)})")
+                    for stage_name, bundles_in_stage in bundle_data_per_stage.items():
+                        st.write(f"- **Stage: {stage_name}** ({len(bundles_in_stage)})")
                         with st.expander(f"View Bundles in {stage_name}"):
-                            for bundle in bundles:
-                                bundle_name = bundle['name']
-                                moved_date = bundle['stageUpdateTime']
+                            for one_bundle in bundles_in_stage:
+                                bundle_name = one_bundle["name"]
+                                moved_date = one_bundle["stageUpdateTime"]
                                 st.write(f"- {bundle_name} (Moved: {moved_date})")
                 else:
                     st.warning(f"No stages found for policy {policy_name}.")
             else:
                 st.error(f"Could not fetch details for policy {policy_name}.")
 
-    # Governed Bundles Section
+    # ----------------------------------------------------
+    # Governed Bundles Section (Now with ModelVersion links)
+    # ----------------------------------------------------
     st.markdown("---")
     st.header("Governed Bundles Details")
 
@@ -314,6 +285,8 @@ if deliverables:
         stage = bundle.get("stage", "Unknown")
         project_name = bundle.get("projectName", "Unnamed Project")
         owner_username = bundle.get("createdBy", {}).get("username", "unknown_user")
+
+        # Bundle link
         bundle_link = f"{API_HOST}/u/{owner_username}/{project_name}/overview"
 
         st.subheader(bundle_name)
@@ -323,15 +296,52 @@ if deliverables:
         st.write(f"**Stage:** {stage}")
 
         # Display tasks related to this bundle
-        related_tasks = [task for task in approval_tasks if task["bundle_name"] == bundle_name]
+        related_tasks = [
+            task for task in approval_tasks if task["bundle_name"] == bundle_name
+        ]
         if related_tasks:
             st.write("**Tasks for this Bundle:**")
             for task in related_tasks:
                 st.write(f"- {task['task_name']} (Stage: {task['stage']})")
-                st.markdown(f"[View Task Bundle]({task['bundle_link']})", unsafe_allow_html=True)
+                st.markdown(
+                    f"[View Task Bundle]({task['bundle_link']})", unsafe_allow_html=True
+                )
+
+        # ----------------------------------------------------
+        #  NEW: ModelVersion links for each governed bundle
+        # ----------------------------------------------------
+        model_links = []
+        for target in bundle.get("targets", []):
+            if target.get("type") == "ModelVersion":
+                identifier = target.get("identifier", {})
+                model_name = identifier.get("name", "Unknown Model")
+                version = identifier.get("version", "Unknown Version")
+                created_by = target.get("createdBy", {}).get("userName", "unknown_user")
+
+                # URL-encode model_name and project_name
+                encoded_model_name = urllib.parse.quote(model_name, safe="")
+                encoded_project_name = urllib.parse.quote(project_name, safe="")
+
+                # Construct a URL-safe link
+                link = (
+                    f"{API_HOST}/u/{created_by}/{encoded_project_name}/model-registry/"
+                    f"{encoded_model_name}/model-card?version={version}"
+                )
+                model_links.append((model_name, version, link))
+
+        if model_links:
+            st.write("**Associated Model Versions:**")
+            for m_name, m_version, m_link in model_links:
+                st.write(f"- **Model Name:** {m_name}, **Version:** {m_version}")
+                st.markdown(f"[View Model Card]({m_link})", unsafe_allow_html=True)
+        else:
+            st.write("No ModelVersion targets found for this bundle.")
+
         st.write("---")
 
+    # ----------------------------------------------------
     # Models Section
+    # ----------------------------------------------------
     if models:
         st.header("Registered Models")
         st.write(f"Total Registered Models: {len(models)}")
@@ -342,7 +352,7 @@ if deliverables:
             project_name = model.get("project", {}).get("name", "Unknown Project")
             owner_username = model.get("ownerUsername", "Unknown Owner")
 
-            # URL-encode project name (if necessary) to avoid broken links
+            # URL-encode to avoid broken links
             encoded_project_name = urllib.parse.quote(project_name, safe="")
 
             model_link = f"{API_HOST}/u/{owner_username}/{encoded_project_name}/overview"
@@ -350,5 +360,6 @@ if deliverables:
             st.markdown(f"[View Model Details]({model_link})", unsafe_allow_html=True)
     else:
         st.warning("No registered models found.")
+
 else:
     st.warning("No deliverables found or an error occurred.")
