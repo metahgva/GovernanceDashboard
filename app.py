@@ -5,6 +5,7 @@ from collections import defaultdict
 import matplotlib.pyplot as plt
 import urllib.parse
 import pandas as pd
+import re
 
 # ----------------------------------------------------
 #   ENV CONFIG & CONSTANTS
@@ -136,6 +137,16 @@ def parse_task_description(description):
 def debug_deliverable(deliverable, bundle_name="Deliverable JSON"):
     with st.expander(f"Debug: {bundle_name}"):
         st.json(deliverable)
+        
+def normalize_model_name(name: str) -> str:
+    """
+    Convert a model name to lowercase, remove underscores
+    and spaces so 'Credit_Approval' matches 'credit approval'.
+    Adjust this logic as needed.
+    """
+    name = name.lower()
+    name = re.sub(r"[\s_]+", "", name)  # remove spaces+underscores
+    return name
 
 # ----------------------------------------------------
 #   MAIN LOGIC
@@ -366,13 +377,14 @@ if deliverables:
                 if target.get("type") == "ModelVersion":
                     identifier = target.get("identifier", {})
                     target_model_name = identifier.get("name")
-                    if target_model_name:
-                        model_to_bundles[target_model_name].append((b_name, link))
+                    normalized_target_name = normalize_model_name(target_model_name)
+                    if normalized_target_name:
+                        model_to_bundles[normalized_target_name].append((b_name, link))
 
         # 2) Build rows for each registered model
         model_rows = []
         for model in models:
-            m_name = model.get("name", "Unnamed Model")
+            m_name = normalize_model_name(model.get("name", "Unnamed Model"))
             project_name = model.get("project", {}).get("name", "Unknown Project")
             owner_username = model.get("ownerUsername", "Unknown Owner")
 
