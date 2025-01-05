@@ -4,6 +4,7 @@ import os
 from collections import defaultdict
 import matplotlib.pyplot as plt
 import urllib.parse  # For URL-encoding
+import pandas as pd
 
 # Load API Host and Key from environment variables or fallback values
 API_HOST = os.getenv("API_HOST", "https://se-demo.domino.tech")
@@ -363,18 +364,43 @@ if deliverables:
         st.header("Registered Models")
         st.write(f"Total Registered Models: {len(models)}")
 
-        st.write("Models List:")
+        # We'll build a list of dictionaries to create a DataFrame
+        model_rows = []
+
         for model in models:
             model_name = model.get("name", "Unnamed Model")
             project_name = model.get("project", {}).get("name", "Unknown Project")
             owner_username = model.get("ownerUsername", "Unknown Owner")
 
-            # URL-encode to avoid broken links
+            # URL-encode project name to avoid broken links if it has spaces or special chars
             encoded_project_name = urllib.parse.quote(project_name, safe="")
 
+            # 1) Model Details Link
+            #    This points to the Domino "overview" page for the project
             model_link = f"{API_HOST}/u/{owner_username}/{encoded_project_name}/overview"
-            st.write(f"- **Name:** {model_name}, **Project:** {project_name}, **Owner:** {owner_username}")
-            st.markdown(f"[View Model Details]({model_link})", unsafe_allow_html=True)
+            model_details_md = f"[View Model Details]({model_link})"
+
+            # 2) Bundles Link
+            #    We'll simply link to the "Governed Bundles Details" section with a ?model= param.
+            #    This is just a placeholder unless you implement filtering logic in that section.
+            encoded_model_name = urllib.parse.quote(model_name, safe="")
+            bundles_link = f"#governed-bundles-details?model={encoded_model_name}"
+            bundles_md = f"[View Governed Bundles]({bundles_link})"
+
+            model_rows.append({
+                "Name": model_name,
+                "Project": project_name,
+                "Owner": owner_username,
+                "Model details (link)": model_details_md,
+                "Bundles": bundles_md
+            })
+
+        # Convert the list of dicts to a DataFrame
+        df_models = pd.DataFrame(model_rows)
+
+        # Render the DataFrame as HTML so that the Markdown links remain clickable
+        st.write(df_models.to_html(escape=False), unsafe_allow_html=True)
+
     else:
         st.warning("No registered models found.")
 
