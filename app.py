@@ -108,6 +108,7 @@ def fetch_registered_models():
         return []
 
 def plot_policy_stages(policy_name, stages, bundle_data):
+    import matplotlib.pyplot as plt
     stage_names = [stage["name"] for stage in stages]
     bundle_counts = [len(bundle_data.get(stage["name"], [])) for stage in stages]
 
@@ -137,7 +138,7 @@ def parse_task_description(description):
 def debug_deliverable(deliverable, bundle_name="Deliverable JSON"):
     with st.expander(f"Debug: {bundle_name}"):
         st.json(deliverable)
-        
+
 def normalize_model_name(name: str) -> str:
     """
     Convert a model name to lowercase, remove underscores
@@ -162,13 +163,13 @@ if deliverables:
     st.markdown("---")
     st.header("Summary")
 
+    # Collect basic info
     total_policies = len(set(bundle.get("policyName", "No Policy Name") for bundle in deliverables))
     total_bundles = len(deliverables)
     governed_bundles = [bundle for bundle in deliverables if bundle.get("policyName")]
     total_governed_bundles = len(governed_bundles)
     total_pending_tasks = 0
 
-    # Collect tasks/pending approvals
     project_ids = {
         bundle.get("projectId", "unknown_project_id") for bundle in deliverables if bundle.get("projectId")
     }
@@ -191,16 +192,10 @@ if deliverables:
                         })
                         total_pending_tasks += 1
 
-    cols = st.columns(3)
-    cols[0].metric("Total Policies", total_policies)
-    cols[1].metric("Total Bundles", total_bundles)
-    cols[2].metric("Pending Tasks", total_pending_tasks)
-
     # Additional summary metrics
-    # 1) Count of registered models
     total_registered_models = len(models)
 
-    # 2) Count of registered models that are part of a bundle (do not double count)
+    # Models in a bundle
     model_name_version_in_bundles = set()
     for deliverable in deliverables:
         for target in deliverable.get("targets", []):
@@ -212,10 +207,9 @@ if deliverables:
                     model_name_version_in_bundles.add((model_name, model_version))
     total_models_in_bundles = len(model_name_version_in_bundles)
 
-    # 3) Total count of projects (from Domino API)
     total_projects = len(all_projects)
 
-    # 4) Count of projects with at least one bundle
+    # Projects with at least one bundle
     project_ids_with_bundles = set()
     for d in deliverables:
         pid = d.get("projectId")
@@ -223,12 +217,108 @@ if deliverables:
             project_ids_with_bundles.add(pid)
     projects_with_a_bundle = len(project_ids_with_bundles)
 
-    st.markdown("#### Additional Metrics")
-    cols2 = st.columns(4)
-    cols2[0].metric("Registered Models", total_registered_models)
-    cols2[1].metric("Models in a Bundle", total_models_in_bundles)
-    cols2[2].metric("Total Projects", total_projects)
-    cols2[3].metric("Projects w/ Bundle", projects_with_a_bundle)
+    # ------------------------------------------------
+    # CREATE CLICKABLE METRICS + LINKS TO DETAILED SECTION
+    # ------------------------------------------------
+    col1, col2, col3 = st.columns(3)
+    col1.metric("Total Policies", total_policies)
+    col1.markdown("[See list](#detailed-metrics-section)", unsafe_allow_html=True)
+
+    col2.metric("Total Bundles", total_bundles)
+    col2.markdown("[See list](#detailed-metrics-section)", unsafe_allow_html=True)
+
+    col3.metric("Pending Tasks", total_pending_tasks)
+    col3.markdown("[See list](#detailed-metrics-section)", unsafe_allow_html=True)
+
+    st.markdown("")
+
+    colA, colB, colC, colD = st.columns(4)
+    colA.metric("Registered Models", total_registered_models)
+    colA.markdown("[See list](#detailed-metrics-section)", unsafe_allow_html=True)
+
+    colB.metric("Models in a Bundle", total_models_in_bundles)
+    colB.markdown("[See list](#detailed-metrics-section)", unsafe_allow_html=True)
+
+    colC.metric("Total Projects", total_projects)
+    colC.markdown("[See list](#detailed-metrics-section)", unsafe_allow_html=True)
+
+    colD.metric("Projects w/ Bundle", projects_with_a_bundle)
+    colD.markdown("[See list](#detailed-metrics-section)", unsafe_allow_html=True)
+
+    # ----------------------------------------
+    # DETAILED METRICS SECTION
+    # ----------------------------------------
+    st.markdown("---")
+    st.markdown("## Detailed Metrics Section")
+    st.markdown('<a id="detailed-metrics-section"></a>', unsafe_allow_html=True)
+
+    # 1) Policies (Detailed List)
+    all_policy_names = sorted(set(bundle.get("policyName", "No Policy Name") for bundle in deliverables))
+    with st.expander("All Policies"):
+        st.write(f"Found {len(all_policy_names)} policy names:")
+        for pol in all_policy_names:
+            st.write(f"- {pol}")
+
+    # 2) Bundles (Detailed List)
+    with st.expander("All Bundles"):
+        st.write(f"Found {len(deliverables)} bundles (deliverables):")
+        for d in deliverables:
+            st.write(f"- {d.get('name', 'Unnamed')}")
+
+    # 3) Pending Tasks (Detailed List)
+    with st.expander("Pending Tasks"):
+        st.write(f"Total Pending Tasks: {total_pending_tasks}")
+        if approval_tasks:
+            for t in approval_tasks:
+                link = t["bundle_link"]
+                st.markdown(f"- [{t['task_name']} (stage: {t['stage']})]({link})", unsafe_allow_html=True)
+        else:
+            st.write("No pending tasks")
+
+    # 4) Registered Models
+    all_model_names = sorted(m.get("name", "Unnamed Model") for m in models)
+    with st.expander("All Registered Models"):
+        st.write(f"Found {len(all_model_names)} registered models:")
+        for mn in all_model_names:
+            st.write(f"- {mn}")
+
+    # 5) Models in a Bundle (Detailed List)
+    #    We'll just list the unique (model_name) from model_name_version_in_bundles
+    #    Or show model_name + version
+    with st.expander("Models in a Bundle"):
+        st.write(f"Found {len(model_name_version_in_bundles)} model+version references:")
+        # We can group them by model name
+        model_map = defaultdict(list)
+        for (mname, mver) in model_name_version_in_bundles:
+            model_map[mname].append(mver)
+
+        for mname, versions in model_map.items():
+            st.write(f"- **{mname}**: Versions {', '.join(str(v) for v in versions)}")
+
+    # 6) Projects (Detailed List)
+    all_project_names = sorted(set(p.get("name", "Unnamed Project") for p in all_projects))
+    with st.expander("All Projects"):
+        st.write(f"Found {len(all_project_names)} total projects:")
+        for pn in all_project_names:
+            st.write(f"- {pn}")
+
+    # 7) Projects w/ a Bundle
+    #    We have project_ids_with_bundles, but let's also show their names if possible
+    with st.expander("Projects w/ Bundle"):
+        st.write(f"Found {projects_with_a_bundle} projects that have at least one deliverable/bundle.")
+        # Build a map from projectId -> project
+        pid_map = {}
+        for p in all_projects:
+            pid_val = p.get("id")
+            if pid_val:
+                pid_map[pid_val] = p
+
+        for pid_val in project_ids_with_bundles:
+            proj = pid_map.get(pid_val)
+            if proj:
+                st.write(f"- {proj.get('name', 'Unnamed Project')} (id={pid_val})")
+            else:
+                st.write(f"- (Unknown project name for id={pid_val})")
 
     # ----------------------------------------
     #  POLICIES ADOPTION SECTION
@@ -279,7 +369,7 @@ if deliverables:
         st.info("No policies found in deliverables.")
 
     # ----------------------------------------
-    #  GOVERNED BUNDLES DETAILS
+    #  GOVERNED BUNDLES DETAILS (TABLE)
     # ----------------------------------------
     st.markdown("---")
     st.header("Governed Bundles Details (Table)")
@@ -292,7 +382,6 @@ if deliverables:
     )
 
     table_rows = []
-
     for bundle in sorted_bundles:
         bundle_name = bundle.get("name", "Unnamed Bundle")
         status = bundle.get("state", "Unknown")
@@ -311,13 +400,11 @@ if deliverables:
         # Collect tasks
         related_tasks = [t for t in approval_tasks if t["bundle_name"] == bundle_name]
         if related_tasks:
-            # Build a bullet list of clickable tasks
             tasks_bullets = []
             for task in related_tasks:
                 task_name = task["task_name"]
                 task_stage = task["stage"]
                 task_link = task["bundle_link"]
-                # Example bullet: - <a href="task_link" ...>Task Name, Stage X</a>
                 tasks_bullets.append(
                     f'<li><a href="{task_link}" target="_blank">{task_name}, Stage: {task_stage}</a></li>'
                 )
@@ -335,8 +422,6 @@ if deliverables:
                 created_by = target.get("createdBy", {}).get("userName", "unknown_user")
 
                 encoded_m_name = urllib.parse.quote(m_name, safe="")
-
-                # Link to the model card
                 model_card_link = (
                     f"{API_HOST}/u/{created_by}/{encoded_project_name}"
                     f"/model-registry/{encoded_m_name}/model-card?version={m_version}"
@@ -361,7 +446,6 @@ if deliverables:
             "Model Versions": model_versions_html
         })
 
-    # Convert to DataFrame and render as HTML
     df_bundles = pd.DataFrame(table_rows)
     st.write(df_bundles.to_html(escape=False), unsafe_allow_html=True)
 
@@ -378,16 +462,14 @@ if deliverables:
             b_name = bundle.get("name", "Unnamed Bundle")
             p_owner = bundle.get("projectOwner", "unknown_user")
             p_name = bundle.get("projectName", "Unnamed Project")
-
-            # Construct Domino link for each governed bundle
-            link = f"{API_HOST}/u/{p_owner}/{p_name}/overview"
+            bundle_link = f"{API_HOST}/u/{p_owner}/{p_name}/overview"
 
             for target in bundle.get("targets", []):
                 if target.get("type") == "ModelVersion":
                     identifier = target.get("identifier", {})
                     target_model_name = identifier.get("name")
                     if target_model_name:
-                        model_to_bundles[target_model_name].append((b_name, link))
+                        model_to_bundles[target_model_name].append((b_name, bundle_link))
 
         # 2) Build rows for each registered model
         model_rows = []
@@ -396,21 +478,17 @@ if deliverables:
             project_name = model.get("project", {}).get("name", "Unknown Project")
             owner_username = model.get("ownerUsername", "Unknown Owner")
 
-            # Encode project name and model name if they contain spaces or special chars
             encoded_project_name = urllib.parse.quote(project_name, safe="")
             encoded_model_name = urllib.parse.quote(m_name, safe="")
 
-            # Build the Domino Model Registry path
-            # e.g. https://se-demo.domino.tech/u/owner_username/project_name/model-registry/model_name
+            # Link directly to Domino Model Registry
             model_registry_url = (
                 f"{API_HOST}/u/{owner_username}/{encoded_project_name}"
                 f"/model-registry/{encoded_model_name}"
             )
-
-            # Make the model name itself a link
             model_name_html = f'<a href="{model_registry_url}" target="_blank">{m_name}</a>'
 
-            # Bundles: either a bullet list or empty
+            # Bundles bullet list
             if m_name in model_to_bundles:
                 bundles_list = model_to_bundles[m_name]
                 bullets = []
@@ -423,17 +501,14 @@ if deliverables:
             else:
                 bundles_html = ""
 
-            # Build the table row (remove the "Model details (link)" column)
             model_rows.append({
-                "Name": model_name_html,          # The clickable link
+                "Name": model_name_html,
                 "Project": project_name,
                 "Owner": owner_username,
                 "Bundles": bundles_html
             })
 
-        # 3) Create a DataFrame and render it as HTML
         df_models = pd.DataFrame(model_rows)
-
         st.write(df_models.to_html(escape=False), unsafe_allow_html=True)
     else:
         st.warning("No registered models found.")
