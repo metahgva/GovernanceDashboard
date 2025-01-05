@@ -284,7 +284,15 @@ if deliverables:
         policy_name = bundle.get("policyName", "Unknown")
         stage = bundle.get("stage", "Unknown")
         project_name = bundle.get("projectName", "Unnamed Project")
-        owner_username = bundle.get("createdBy", {}).get("username", "unknown_user")
+        owner_username = bundle.get("createdBy", {}).get("username")
+        if not owner_username or owner_username == "unknown_user":
+            # Fallback to the owner of the project (if available)
+            project_data = bundle.get("project", {})
+            owner_username = project_data.get("ownerUsername")
+
+# Final fallback
+if not owner_username:
+    owner_username = "public"  # or something else
 
         # Construct the bundle overview link
         bundle_link = f"{API_HOST}/u/{owner_username}/{project_name}/overview"
