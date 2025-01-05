@@ -121,13 +121,17 @@ total_projects_with_bundles = len(projects_with_bundles)
 st.markdown("---")
 st.header("Summary")
 
-cols = st.columns(6)
-cols[0].metric("Total Policies", total_policies)
-cols[1].metric("Total Bundles", total_bundles)
-cols[2].metric("Total Models", len(models))
-cols[3].metric("Models in Bundles", total_models_in_bundles)
-cols[4].metric("Total Projects", total_projects)
-cols[5].metric("Projects with Bundles", total_projects_with_bundles)
+# First Row of Metrics
+cols1 = st.columns(3)
+cols1[0].metric("Total Policies", total_policies)
+cols1[1].metric("Total Bundles", total_bundles)
+cols1[2].metric("Total Models", len(models))
+
+# Second Row of Metrics
+cols2 = st.columns(3)
+cols2[0].metric("Models in Bundles", total_models_in_bundles)
+cols2[1].metric("Total Projects", total_projects)
+cols2[2].metric("Projects with Bundles", total_projects_with_bundles)
 
 # Policies Adoption Section
 st.markdown("---")
