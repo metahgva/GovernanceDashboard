@@ -12,9 +12,6 @@ import pandas as pd
 API_HOST = os.getenv("API_HOST", "https://se-demo.domino.tech")
 API_KEY = os.getenv("API_KEY", "2627b46253dfea3a329b8c5b84748b98d5b3c5ffe6eb02a55f7177231fc8c1c4")
 
-# ----------------------------------------------------
-#   STREAMLIT TITLE & SIDEBAR
-# ----------------------------------------------------
 st.title("Deliverables and Projects Dashboard")
 
 st.sidebar.title("Navigation")
@@ -26,11 +23,11 @@ st.sidebar.markdown("[Governed Bundles Details](#governed-bundles-details)", uns
 # Sidebar API Configuration
 st.sidebar.header("API Configuration")
 st.sidebar.write(f"API Host: {API_HOST}")
-st.sidebar.write(f"API Key: {API_KEY[:5]}{'*' * (len(API_KEY) - 5)}")  # Mask the key for security
+st.sidebar.write(f"API Key: {API_KEY[:5]}{'*' * (len(API_KEY) - 5)}")  # Mask the key
 if not API_KEY:
     st.sidebar.error("API Key is not set. Please configure the environment variable.")
 
-# Optional: Debug checkbox to control JSON output
+# Optional debug checkbox
 show_debug = st.sidebar.checkbox("Show Bundle Debug Info", value=False)
 
 # ----------------------------------------------------
@@ -118,7 +115,7 @@ def plot_policy_stages(policy_name, stages, bundle_data):
     ax.set_title(f"Policy: {policy_name}")
     ax.set_xlabel("Stages")
     ax.set_ylabel("Number of Bundles")
-    ax.yaxis.get_major_locator().set_params(integer=True)  # Force Y-axis to use whole numbers
+    ax.yaxis.get_major_locator().set_params(integer=True)
     plt.xticks(rotation=45, ha="right")
     plt.tight_layout()
     return fig
@@ -136,7 +133,6 @@ def parse_task_description(description):
     except Exception:
         return None, None
 
-# Optional: Debug function to show JSON data for a given bundle
 def debug_deliverable(deliverable, bundle_name="Deliverable JSON"):
     with st.expander(f"Debug: {bundle_name}"):
         st.json(deliverable)
@@ -184,7 +180,6 @@ if deliverables:
                         })
                         total_pending_tasks += 1
 
-    # Display original summary metrics
     cols = st.columns(3)
     cols[0].metric("Total Policies", total_policies)
     cols[1].metric("Total Bundles", total_bundles)
@@ -217,7 +212,6 @@ if deliverables:
             project_ids_with_bundles.add(pid)
     projects_with_a_bundle = len(project_ids_with_bundles)
 
-    # Display the new summary metrics
     st.markdown("#### Additional Metrics")
     cols2 = st.columns(4)
     cols2[0].metric("Registered Models", total_registered_models)
@@ -263,9 +257,9 @@ if deliverables:
                         st.write(f"- **Stage: {stage_name}** ({len(bundles_in_stage)})")
                         with st.expander(f"View Bundles in {stage_name}"):
                             for one_bundle in bundles_in_stage:
-                                bundle_n = one_bundle["name"]
+                                bname = one_bundle["name"]
                                 moved_date = one_bundle["stageUpdateTime"]
-                                st.write(f"- {bundle_n} (Moved: {moved_date})")
+                                st.write(f"- {bname} (Moved: {moved_date})")
                 else:
                     st.warning(f"No stages found for policy {policy_name}.")
             else:
@@ -278,7 +272,6 @@ if deliverables:
     # ----------------------------------------
     st.markdown("---")
     st.header("Governed Bundles Details")
-    st.markdown('<div id="governed-bundles-details"></div>', unsafe_allow_html=True)
 
     # Sort governed bundles by whether they have tasks first
     sorted_bundles = sorted(
@@ -293,26 +286,22 @@ if deliverables:
         policy_name = bundle.get("policyName", "Unknown")
         stage = bundle.get("stage", "Unknown")
         project_name = bundle.get("projectName", "Unnamed Project")
+        project_owner = bundle.get("projectOwner", "unknown_user")
 
-        # "projectOwner" from your JSON can be used as the correct username
-        owner_username = bundle.get("projectOwner", "unknown_user")
-
-        # Construct the bundle overview link
-        bundle_link = f"{API_HOST}/u/{owner_username}/{project_name}/overview"
+        # Domino project link for the bundle's project
+        bundle_link = f"{API_HOST}/u/{project_owner}/{project_name}/overview"
 
         # Make the bundle name itself a link
         st.markdown(f"## [{bundle_name}]({bundle_link})", unsafe_allow_html=True)
 
-        # Show debug JSON if user toggled in sidebar
         if show_debug:
             debug_deliverable(bundle, bundle_name)
 
-        # Display key fields
         st.write(f"**Status:** {status}")
         st.write(f"**Policy Name:** {policy_name}")
         st.write(f"**Stage:** {stage}")
 
-        # Display tasks related to this bundle
+        # Display tasks
         related_tasks = [t for t in approval_tasks if t["bundle_name"] == bundle_name]
         if related_tasks:
             st.write("**Tasks for this Bundle:**")
@@ -324,7 +313,7 @@ if deliverables:
         else:
             st.write("No tasks for this bundle.")
 
-        # Display associated ModelVersion links (if any)
+        # ModelVersion links
         model_links = []
         for target in bundle.get("targets", []):
             if target.get("type") == "ModelVersion":
@@ -333,15 +322,14 @@ if deliverables:
                 m_version = identifier.get("version", "Unknown Version")
                 created_by = target.get("createdBy", {}).get("userName", "unknown_user")
 
-                # URL-encode in case project name or model name has spaces
                 encoded_project_name = urllib.parse.quote(project_name, safe="")
-                encoded_model_name = urllib.parse.quote(m_name, safe="")
+                encoded_m_name = urllib.parse.quote(m_name, safe="")
 
-                model_card_link = (
-                    f"{API_HOST}/u/{created_by}/{encoded_project_name}/"
-                    f"model-registry/{encoded_model_name}/model-card?version={m_version}"
+                m_card_link = (
+                    f"{API_HOST}/u/{created_by}/{encoded_project_name}"
+                    f"/model-registry/{encoded_m_name}/model-card?version={m_version}"
                 )
-                model_links.append((m_name, m_version, model_card_link))
+                model_links.append((m_name, m_version, m_card_link))
 
         if model_links:
             st.write("**Associated Model Versions:**")
@@ -357,63 +345,71 @@ if deliverables:
         st.write("---")
 
     # ----------------------------------------
-    #  REGISTERED MODELS SECTION (TABLE)
+    #  REGISTERED MODELS TABLE
     # ----------------------------------------
     if models:
         st.header("Registered Models")
         st.write(f"Total Registered Models: {len(models)}")
 
-        # 1) Build a set of model names in governed bundles
-        #    so we know which ones to show a "Bundles" link for.
-        models_in_gov_bundles = set()
-        for b in governed_bundles:
-            for t in b.get("targets", []):
-                if t.get("type") == "ModelVersion":
-                    identifier = t.get("identifier", {})
-                    model_name = identifier.get("name")
-                    if model_name:
-                        models_in_gov_bundles.add(model_name)
+        # 1) Build a dictionary: model_name -> list of (bundle_name, bundle_link)
+        model_to_bundles = defaultdict(list)
+        for bundle in governed_bundles:
+            b_name = bundle.get("name", "Unnamed Bundle")
+            p_owner = bundle.get("projectOwner", "unknown_user")
+            p_name = bundle.get("projectName", "Unnamed Project")
+
+            # Construct Domino link for each governed bundle
+            link = f"{API_HOST}/u/{p_owner}/{p_name}/overview"
+
+            # Check each target for a match to this model's name
+            for target in bundle.get("targets", []):
+                if target.get("type") == "ModelVersion":
+                    identifier = target.get("identifier", {})
+                    target_model_name = identifier.get("name")
+                    if target_model_name:
+                        model_to_bundles[target_model_name].append((b_name, link))
 
         # 2) Build rows for each registered model
         model_rows = []
         for model in models:
-            model_name = model.get("name", "Unnamed Model")
+            m_name = model.get("name", "Unnamed Model")
             project_name = model.get("project", {}).get("name", "Unknown Project")
             owner_username = model.get("ownerUsername", "Unknown Owner")
 
-            # Encode project name for safety
+            # Encode project name if needed
             encoded_project_name = urllib.parse.quote(project_name, safe="")
 
             # Model details link (HTML)
-            model_overview_link = (
-                f"{API_HOST}/u/{owner_username}/{encoded_project_name}/overview"
-            )
-            model_details_html = (
-                f'<a href="{model_overview_link}" target="_blank">View Model Details</a>'
-            )
+            model_overview_link = f"{API_HOST}/u/{owner_username}/{encoded_project_name}/overview"
+            model_details_html = f'<a href="{model_overview_link}" target="_blank">View Model Details</a>'
 
-            # Bundles link (only if in governed bundles)
-            if model_name in models_in_gov_bundles:
-                encoded_model_name = urllib.parse.quote(model_name, safe="")
-                # Link to the governed bundles section, possibly with a query param
-                bundles_anchor = f"#governed-bundles-details?model={encoded_model_name}"
-                bundles_html = f'<a href="{bundles_anchor}">View Governed Bundles</a>'
+            # Bundles: either a bullet list or empty
+            if m_name in model_to_bundles:
+                bundles_list = model_to_bundles[m_name]
+                # Create a bullet list of links
+                # Example: "<ul><li><a href='...'>BundleName</a></li>...</ul>"
+                bullets = []
+                for b_name, b_link in bundles_list:
+                    # Escape or encode if b_name might have special chars
+                    safe_bundle_name = b_name.replace("<", "&lt;").replace(">", "&gt;")
+                    bullets.append(f'<li><a href="{b_link}" target="_blank">{safe_bundle_name}</a></li>')
+                bundles_html = f"<ul>{''.join(bullets)}</ul>"
             else:
                 bundles_html = ""
 
             model_rows.append({
-                "Name": model_name,
+                "Name": m_name,
                 "Project": project_name,
                 "Owner": owner_username,
                 "Model details (link)": model_details_html,
-                "Bundles": bundles_html
+                "Bundles (links)": bundles_html
             })
 
-        # Convert to DataFrame
+        # 3) Create a DataFrame and render as HTML
         df_models = pd.DataFrame(model_rows)
 
-        # Render as HTML with unsafe_allow_html so links remain clickable
         st.write(df_models.to_html(escape=False), unsafe_allow_html=True)
+
     else:
         st.warning("No registered models found.")
 
