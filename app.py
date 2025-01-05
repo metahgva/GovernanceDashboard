@@ -86,7 +86,7 @@ def fetch_policy_details(policy_id):
     except Exception as e:
         st.error(f"An exception occurred while fetching policy details for {policy_id}: {e}")
         return None
-    
+
 # Function to fetch registered models
 @st.cache_data
 def fetch_registered_models():
@@ -102,7 +102,6 @@ def fetch_registered_models():
     except Exception as e:
         st.error(f"An error occurred while fetching registered models: {e}")
         return []
-
 
 # Function to visualize policies with stages
 def plot_policy_stages(policy_name, stages, bundle_data):
@@ -143,13 +142,15 @@ if deliverables:
     # Summary Section
     st.markdown("---")
     st.header("Summary")
+
+    # -- Existing metrics --
     total_policies = len(set(bundle.get("policyName", "No Policy Name") for bundle in deliverables))
     total_bundles = len(deliverables)
     governed_bundles = [bundle for bundle in deliverables if bundle.get("policyName")]
     total_governed_bundles = len(governed_bundles)
     total_pending_tasks = 0
-            
-    # Fetch tasks and count pending ones
+
+    # Collect tasks/pending approvals
     project_ids = {
         bundle.get("projectId", "unknown_project_id") for bundle in deliverables if bundle.get("projectId")
     }
@@ -158,7 +159,6 @@ if deliverables:
     for project_id in project_ids:
         if project_id == "unknown_project_id":
             continue
-
         tasks = fetch_tasks_for_project(project_id)
         for task in tasks:
             if isinstance(task, dict):
@@ -174,11 +174,48 @@ if deliverables:
                         })
                         total_pending_tasks += 1
 
+    # Display old summary metrics
     cols = st.columns(3)
     cols[0].metric("Total Policies", total_policies)
     cols[1].metric("Total Bundles", total_bundles)
     cols[2].metric("Pending Tasks", total_pending_tasks)
-    
+
+    # -- New summary metrics --
+    #
+    # 1) Count of registered models
+    total_registered_models = len(models)
+
+    # 2) Count of registered models that are part of a bundle (do not double count)
+    model_names_set = set(m["name"] for m in models if "name" in m)
+    model_names_in_bundles = set()
+    for d in deliverables:
+        for t in d.get("targets", []):
+            if t.get("type") == "ModelVersion":
+                identifier = t.get("identifier", {})
+                model_name = identifier.get("name")
+                if model_name in model_names_set:
+                    model_names_in_bundles.add(model_name)
+    total_models_in_bundles = len(model_names_in_bundles)
+
+    # 3) Total count of projects (from Domino API)
+    total_projects = len(all_projects)
+
+    # 4) Count of projects with at least one bundle
+    project_ids_with_bundles = set()
+    for d in deliverables:
+        pid = d.get("projectId")
+        if pid:
+            project_ids_with_bundles.add(pid)
+    projects_with_a_bundle = len(project_ids_with_bundles)
+
+    # Display new summary metrics
+    st.markdown("#### Additional Metrics")
+    cols2 = st.columns(4)
+    cols2[0].metric("Registered Models", total_registered_models)
+    cols2[1].metric("Models in a Bundle", total_models_in_bundles)
+    cols2[2].metric("Total Projects", total_projects)
+    cols2[3].metric("Projects w/ Bundle", projects_with_a_bundle)
+
     # Models and Bundles 
     st.header("Deliverables and Associated Model Versions")
     deliverable_targets = {d["id"]: d.get("targets", []) for d in deliverables}
@@ -281,9 +318,8 @@ if deliverables:
                 st.write(f"- {task['task_name']} (Stage: {task['stage']})")
                 st.markdown(f"[View Task Bundle]({task['bundle_link']})", unsafe_allow_html=True)
         st.write("---")
-    
-    # Models Section 
-    # Display registered models
+
+    # Models Section
     if models:
         st.header("Registered Models")
         st.write(f"Total Registered Models: {len(models)}")
