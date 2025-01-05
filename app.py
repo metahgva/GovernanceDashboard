@@ -4,6 +4,8 @@ import os
 from collections import defaultdict
 import matplotlib.pyplot as plt
 
+# 
+
 # Load API Host and Key from environment variables or fallback values
 API_HOST = os.getenv("API_HOST", "https://se-demo.domino.tech")
 API_KEY = os.getenv("API_KEY", "2627b46253dfea3a329b8c5b84748b98d5b3c5ffe6eb02a55f7177231fc8c1c4")
@@ -17,7 +19,6 @@ st.sidebar.markdown("[Summary](#summary)", unsafe_allow_html=True)
 st.sidebar.markdown("[Policies Adoption](#policies-adoption)", unsafe_allow_html=True)
 st.sidebar.markdown("[Projects Without Bundles](#projects-without-bundles)", unsafe_allow_html=True)
 st.sidebar.markdown("[Governed Bundles Details](#governed-bundles-details)", unsafe_allow_html=True)
-st.sidebar.markdown("[Models Overview](#models-overview)", unsafe_allow_html=True)
 
 # Sidebar API Configuration
 st.sidebar.header("API Configuration")
@@ -56,18 +57,22 @@ def fetch_all_projects():
         st.error(f"An error occurred while fetching projects: {e}")
         return []
 
-# Function to fetch registered models
+# Function to fetch tasks for a project
 @st.cache_data
-def fetch_registered_models():
+def fetch_tasks_for_project(project_id):
     try:
-        url = f"{API_HOST}/api/registeredmodels/v1"
+        url = f"{API_HOST}/api/projects/v1/projects/{project_id}/goals"
         response = requests.get(url, headers={"X-Domino-Api-Key": API_KEY})
         if response.status_code != 200:
-            st.error(f"Error fetching models: {response.status_code} - {response.text}")
+            st.error(f"Error fetching tasks for project {project_id}: {response.status_code}")
             return []
-        return response.json().get("items", [])
+        tasks_data = response.json()
+        if "goals" not in tasks_data:
+            st.error(f"Unexpected tasks structure for project {project_id}: {tasks_data}")
+            return []
+        return tasks_data["goals"]
     except Exception as e:
-        st.error(f"An error occurred while fetching models: {e}")
+        st.error(f"An error occurred while fetching tasks for project {project_id}: {e}")
         return []
 
 # Function to fetch policy details
@@ -98,10 +103,23 @@ def plot_policy_stages(policy_name, stages, bundle_data):
     plt.tight_layout()
     return fig
 
+# Function to parse task description and extract bundle name and link
+def parse_task_description(description):
+    try:
+        start = description.find("[")
+        end = description.find("]")
+        bundle_name = description[start + 1 : end]
+        link_start = description.find("(")
+        link_end = description.find(")")
+        bundle_link = description[link_start + 1 : link_end]
+        bundle_link = f"{API_HOST}{bundle_link}"  # Correct base URL
+        return bundle_name, bundle_link
+    except Exception:
+        return None, None
+
 # Main Dashboard Logic
 all_projects = fetch_all_projects()
 deliverables = fetch_deliverables()
-models = fetch_registered_models()
 
 if deliverables:
     # Summary Section
@@ -111,28 +129,37 @@ if deliverables:
     total_bundles = len(deliverables)
     governed_bundles = [bundle for bundle in deliverables if bundle.get("policyName")]
     total_governed_bundles = len(governed_bundles)
-    total_projects = len(all_projects)
-    projects_with_bundles = len(set(bundle.get("projectId") for bundle in governed_bundles))
-    total_models = len(models)
-    governed_models = len(
-        {
-            target.get("identifier", {}).get("name")
-            for bundle in governed_bundles
-            for target in bundle.get("targets", [])
-            if target.get("type") == "ModelVersion"
-        }
-    )
+    total_pending_tasks = 0
 
-    # Display summary metrics
+    # Fetch tasks and count pending ones
+    project_ids = {
+        bundle.get("projectId", "unknown_project_id") for bundle in deliverables if bundle.get("projectId")
+    }
+    approval_tasks = []
+
+    for project_id in project_ids:
+        if project_id == "unknown_project_id":
+            continue
+
+        tasks = fetch_tasks_for_project(project_id)
+        for task in tasks:
+            if isinstance(task, dict):
+                description = task.get("description", "")
+                if "Approval requested Stage" in description:
+                    bundle_name, bundle_link = parse_task_description(description)
+                    if bundle_name and bundle_link:
+                        approval_tasks.append({
+                            "task_name": task.get("title", "Unnamed Task"),
+                            "stage": description.split("Stage")[1].split(":")[0].strip(),
+                            "bundle_name": bundle_name,
+                            "bundle_link": bundle_link,
+                        })
+                        total_pending_tasks += 1
+
     cols = st.columns(3)
     cols[0].metric("Total Policies", total_policies)
-    cols[1].metric("Governed Bundles", total_governed_bundles)
-    cols[2].metric("Projects with Bundles", projects_with_bundles)
-
-    cols = st.columns(3)
-    cols[0].metric("Total Projects", total_projects)
-    cols[1].metric("Total Models", total_models)
-    cols[2].metric("Governed Models", governed_models)
+    cols[1].metric("Total Bundles", total_bundles)
+    cols[2].metric("Pending Tasks", total_pending_tasks)
 
     # Policies Adoption Section
     st.markdown("---")
@@ -147,6 +174,7 @@ if deliverables:
             if policy_details:
                 stages = policy_details.get("stages", [])
                 if stages:
+                    # Collect bundle data per stage
                     bundle_data_per_stage = defaultdict(list)
                     for deliverable in deliverables:
                         if deliverable.get("policyId") == policy_id:
@@ -156,24 +184,54 @@ if deliverables:
                                 "stageUpdateTime": deliverable.get("stageUpdateTime", "N/A")
                             })
 
+                    # Plot the stages and bundles
                     fig = plot_policy_stages(policy_name, stages, bundle_data_per_stage)
                     st.pyplot(fig)
 
-# Governed Bundles Section
-st.markdown("---")
-st.header("Governed Bundles Details")
-for bundle in governed_bundles:
-    bundle_name = bundle.get("name", "Unnamed Bundle")
-    policy_name = bundle.get("policyName", "Unknown")
-    targets = bundle.get("targets", [])
-    if targets:
-        st.write(f"**Bundle Name:** {bundle_name}, **Policy Name:** {policy_name}")
-        for target in targets:
-            if target.get("type") == "ModelVersion":
-                name = target["identifier"].get("name")
-                version = target["identifier"].get("version")
-                model_link = f"{API_HOST}/model-registry/{name}/model-card?version={version}"
-                st.markdown(f"- **Model:** {name} (Version {version}) [View]({model_link})")
+                    # List bundles in each stage
+                    for stage_name, bundles in bundle_data_per_stage.items():
+                        st.write(f"- **Stage: {stage_name}** ({len(bundles)})")
+                        with st.expander(f"View Bundles in {stage_name}"):
+                            for bundle in bundles:
+                                bundle_name = bundle['name']
+                                moved_date = bundle['stageUpdateTime']
+                                st.write(f"- {bundle_name} (Moved: {moved_date})")
+                else:
+                    st.warning(f"No stages found for policy {policy_name}.")
+            else:
+                st.error(f"Could not fetch details for policy {policy_name}.")
 
+    # Governed Bundles Section
+    st.markdown("---")
+    st.header("Governed Bundles Details")
+
+    # Sort governed bundles by whether they have tasks first
+    sorted_bundles = sorted(governed_bundles, key=lambda b: any(
+        t["bundle_name"] == b.get("name", "") for t in approval_tasks
+    ), reverse=True)
+
+    for bundle in sorted_bundles:
+        bundle_name = bundle.get("name", "Unnamed Bundle")
+        status = bundle.get("state", "Unknown")
+        policy_name = bundle.get("policyName", "Unknown")
+        stage = bundle.get("stage", "Unknown")
+        project_name = bundle.get("projectName", "Unnamed Project")
+        owner_username = bundle.get("createdBy", {}).get("username", "unknown_user")
+        bundle_link = f"{API_HOST}/u/{owner_username}/{project_name}/overview"
+
+        st.subheader(bundle_name)
+        st.markdown(f"[View Bundle Details]({bundle_link})", unsafe_allow_html=True)
+        st.write(f"**Status:** {status}")
+        st.write(f"**Policy Name:** {policy_name}")
+        st.write(f"**Stage:** {stage}")
+
+        # Display tasks related to this bundle
+        related_tasks = [task for task in approval_tasks if task["bundle_name"] == bundle_name]
+        if related_tasks:
+            st.write("**Tasks for this Bundle:**")
+            for task in related_tasks:
+                st.write(f"- {task['task_name']} (Stage: {task['stage']})")
+                st.markdown(f"[View Task Bundle]({task['bundle_link']})", unsafe_allow_html=True)
+        st.write("---")
 else:
     st.warning("No deliverables found or an error occurred.")
