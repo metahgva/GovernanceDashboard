@@ -266,7 +266,7 @@ if deliverables:
                 st.error(f"Could not fetch details for policy {policy_name}.")
 
     # ----------------------------------------------------
-    # Governed Bundles Section (Now with ModelVersion links)
+    # Governed Bundles Section (Now with improved layout)
     # ----------------------------------------------------
     st.markdown("---")
     st.header("Governed Bundles Details")
@@ -286,30 +286,35 @@ if deliverables:
         project_name = bundle.get("projectName", "Unnamed Project")
         owner_username = bundle.get("createdBy", {}).get("username", "unknown_user")
 
-        # Bundle link
+        # Construct the bundle overview link
         bundle_link = f"{API_HOST}/u/{owner_username}/{project_name}/overview"
 
-        st.subheader(bundle_name)
-        st.markdown(f"[View Bundle Details]({bundle_link})", unsafe_allow_html=True)
+        # Make the bundle name itself a link
+        # Example: "## [Forecasting Evidence](https://.../overview)"
+        st.markdown(f"## [{bundle_name}]({bundle_link})", unsafe_allow_html=True)
+
+        # Display key info (status, policy, stage)
         st.write(f"**Status:** {status}")
         st.write(f"**Policy Name:** {policy_name}")
         st.write(f"**Stage:** {stage}")
 
-        # Display tasks related to this bundle
-        related_tasks = [
-            task for task in approval_tasks if task["bundle_name"] == bundle_name
-        ]
+        # Display tasks as clickable bullets
+        related_tasks = [task for task in approval_tasks if task["bundle_name"] == bundle_name]
         if related_tasks:
             st.write("**Tasks for this Bundle:**")
             for task in related_tasks:
-                st.write(f"- {task['task_name']} (Stage: {task['stage']})")
+                task_name = task["task_name"]
+                task_stage = task["stage"]
+                task_link = task["bundle_link"]
+                # Turn the entire line into a hyperlink
                 st.markdown(
-                    f"[View Task Bundle]({task['bundle_link']})", unsafe_allow_html=True
+                    f"- [{task_name}, Stage: {task_stage}]({task_link})",
+                    unsafe_allow_html=True
                 )
+        else:
+            st.write("No tasks for this bundle.")
 
-        # ----------------------------------------------------
-        #  NEW: ModelVersion links for each governed bundle
-        # ----------------------------------------------------
+        # Display associated ModelVersion links (if any)
         model_links = []
         for target in bundle.get("targets", []):
             if target.get("type") == "ModelVersion":
@@ -318,25 +323,30 @@ if deliverables:
                 version = identifier.get("version", "Unknown Version")
                 created_by = target.get("createdBy", {}).get("userName", "unknown_user")
 
-                # URL-encode model_name and project_name
+                # URL-encode model_name and project_name in case of spaces/special chars
                 encoded_model_name = urllib.parse.quote(model_name, safe="")
                 encoded_project_name = urllib.parse.quote(project_name, safe="")
 
                 # Construct a URL-safe link
-                link = (
+                model_card_link = (
                     f"{API_HOST}/u/{created_by}/{encoded_project_name}/model-registry/"
                     f"{encoded_model_name}/model-card?version={version}"
                 )
-                model_links.append((model_name, version, link))
+                model_links.append((model_name, version, model_card_link))
 
         if model_links:
             st.write("**Associated Model Versions:**")
             for m_name, m_version, m_link in model_links:
-                st.write(f"- **Model Name:** {m_name}, **Version:** {m_version}")
-                st.markdown(f"[View Model Card]({m_link})", unsafe_allow_html=True)
+                # Make a bullet with the model name/version and link
+                st.markdown(
+                    f"- **{m_name}** (Version: {m_version}) &nbsp; "
+                    f"[View Model Card]({m_link})",
+                    unsafe_allow_html=True
+                )
         else:
             st.write("No ModelVersion targets found for this bundle.")
 
+        # A horizontal rule after each bundle
         st.write("---")
 
     # ----------------------------------------------------
