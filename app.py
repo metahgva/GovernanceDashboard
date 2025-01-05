@@ -290,10 +290,6 @@ if deliverables:
             project_data = bundle.get("project", {})
             owner_username = project_data.get("ownerUsername")
 
-# Final fallback
-if not owner_username:
-    owner_username = "public"  # or something else
-
         # Construct the bundle overview link
         bundle_link = f"{API_HOST}/u/{owner_username}/{project_name}/overview"
 
