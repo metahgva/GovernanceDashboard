@@ -245,6 +245,32 @@ if deliverables:
                 st.write("No ModelVersion targets found.")
         else:
             st.write("No targets found for this deliverable.")
+    
+    # 1. Build a set of (model_name, latest_version) from the registry
+    registered_model_versions = set()
+    for m in models:
+        name = m.get("name")
+        latest_version = m.get("latestVersion")
+        if name and latest_version:
+            registered_model_versions.add((name, str(latest_version)))
+
+    # 2. Collect (model_name, version) from each deliverable’s ModelVersion target
+    model_versions_in_bundles = set()
+    for deliverable in deliverables:
+        for t in deliverable.get("targets", []):
+            if t.get("type") == "ModelVersion":
+                identifier = t.get("identifier", {})
+                model_name = identifier.get("name")
+                model_version = identifier.get("version")
+
+                # If the model+version is recognized among the registered_model_versions
+                if (model_name, str(model_version)) in registered_model_versions:
+                    model_versions_in_bundles.add((model_name, str(model_version)))
+
+    # 3. Count the distinct (model,version) pairs referenced in any bundle
+    total_models_in_bundles = len(model_versions_in_bundles)
+
+    st.metric("Models in a Bundle", total_models_in_bundles)
 
     # Policies Adoption Section
     st.markdown("---")
