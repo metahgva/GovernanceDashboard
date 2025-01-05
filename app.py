@@ -3,6 +3,7 @@ import requests
 import os
 from collections import defaultdict
 import matplotlib.pyplot as plt
+import urllib.parse  # <--- For URL-encoding
 
 # Load API Host and Key from environment variables or fallback values
 API_HOST = os.getenv("API_HOST", "https://se-demo.domino.tech")
@@ -184,7 +185,7 @@ if deliverables:
     total_registered_models = len(models)
 
     # 2) Count of registered models that are part of a bundle (do not double count)
-    #    We store (model_name, model_version) pairs to ensure we count each version distinctly.
+    #    We store (model_name, model_version) pairs to ensure each version is counted distinctly.
     model_name_version_in_bundles = set()
     for deliverable in deliverables:
         for target in deliverable.get("targets", []):
@@ -233,8 +234,15 @@ if deliverables:
                     version = identifier.get("version", "Unknown Version")
                     created_by = target.get("createdBy", {}).get("userName", "unknown_user")
                     project_name = deliverable.get("projectName", "Unknown Project")
+
+                    # URL-encode model_name and project_name
+                    encoded_model_name = urllib.parse.quote(model_name, safe="")
+                    encoded_project_name = urllib.parse.quote(project_name, safe="")
+
+                    # Construct a URL-safe link
                     link = (
-                        f"{API_HOST}/u/{created_by}/{project_name}/model-registry/{model_name}/model-card?version={version}"
+                        f"{API_HOST}/u/{created_by}/{encoded_project_name}/model-registry/"
+                        f"{encoded_model_name}/model-card?version={version}"
                     )
                     model_links.append((model_name, version, link))
 
@@ -292,7 +300,7 @@ if deliverables:
     st.markdown("---")
     st.header("Governed Bundles Details")
 
-    # Sort governed bundles by whether they have tasks
+    # Sort governed bundles by whether they have tasks first
     sorted_bundles = sorted(
         governed_bundles,
         key=lambda b: any(t["bundle_name"] == b.get("name", "") for t in approval_tasks),
@@ -333,7 +341,11 @@ if deliverables:
             model_name = model.get("name", "Unnamed Model")
             project_name = model.get("project", {}).get("name", "Unknown Project")
             owner_username = model.get("ownerUsername", "Unknown Owner")
-            model_link = f"{API_HOST}/u/{owner_username}/{project_name}/overview"
+
+            # URL-encode project name (if necessary) to avoid broken links
+            encoded_project_name = urllib.parse.quote(project_name, safe="")
+
+            model_link = f"{API_HOST}/u/{owner_username}/{encoded_project_name}/overview"
             st.write(f"- **Name:** {model_name}, **Project:** {project_name}, **Owner:** {owner_username}")
             st.markdown(f"[View Model Details]({model_link})", unsafe_allow_html=True)
     else:
