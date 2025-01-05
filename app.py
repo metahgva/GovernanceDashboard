@@ -15,9 +15,8 @@ st.title("Deliverables and Projects Dashboard")
 st.sidebar.title("Navigation")
 st.sidebar.markdown("[Summary](#summary)", unsafe_allow_html=True)
 st.sidebar.markdown("[Policies Adoption](#policies-adoption)", unsafe_allow_html=True)
-st.sidebar.markdown("[Projects Without Bundles](#projects-without-bundles)", unsafe_allow_html=True)
 st.sidebar.markdown("[Governed Bundles Details](#governed-bundles-details)", unsafe_allow_html=True)
-st.sidebar.markdown("[Models](#models)", unsafe_allow_html=True)
+st.sidebar.markdown("[Models and Mapping](#models-and-mapping)", unsafe_allow_html=True)
 
 # Sidebar API Configuration
 st.sidebar.header("API Configuration")
@@ -26,7 +25,7 @@ st.sidebar.write(f"API Key: {API_KEY[:5]}{'*' * (len(API_KEY) - 5)}")  # Masked 
 if not API_KEY:
     st.sidebar.error("API Key is not set. Please configure the environment variable.")
 
-# Fetch deliverables
+# Function to fetch deliverables
 @st.cache_data
 def fetch_deliverables():
     try:
@@ -42,23 +41,21 @@ def fetch_deliverables():
         st.error(f"An error occurred while fetching deliverables: {e}")
         return []
 
-# Fetch registered models
+# Function to fetch all models
 @st.cache_data
-def fetch_registered_models():
+def fetch_all_models():
     try:
-        response = requests.get(
-            f"{API_HOST}/api/registeredmodels/v1",
-            headers={"X-Domino-Api-Key": API_KEY},
-        )
+        url = f"{API_HOST}/api/registeredmodels/v1"
+        response = requests.get(url, headers={"X-Domino-Api-Key": API_KEY})
         if response.status_code != 200:
-            st.error(f"Error fetching registered models: {response.status_code} - {response.text}")
+            st.error(f"Error fetching models: {response.status_code} - {response.text}")
             return []
         return response.json().get("items", [])
     except Exception as e:
-        st.error(f"An error occurred while fetching registered models: {e}")
+        st.error(f"An error occurred while fetching models: {e}")
         return []
 
-# Fetch policy details
+# Function to fetch policy details
 def fetch_policy_details(policy_id):
     try:
         url = f"{API_HOST}/guardrails/v1/policies/{policy_id}"
@@ -68,28 +65,10 @@ def fetch_policy_details(policy_id):
             return None
         return response.json()
     except Exception as e:
-        st.error(f"An error occurred while fetching policy details for {policy_id}: {e}")
+        st.error(f"An exception occurred while fetching policy details for {policy_id}: {e}")
         return None
 
-# Parse deliverable targets
-def parse_targets(deliverables):
-    targets_by_deliverable = defaultdict(list)
-    for deliverable in deliverables:
-        targets = deliverable.get("targets", [])
-        for target in targets:
-            if target.get("type") == "ModelVersion":
-                identifier = target.get("identifier", {})
-                model_name = identifier.get("name", "Unknown Model")
-                version = identifier.get("version", "Unknown Version")
-                created_by = target.get("createdBy", {}).get("userName", "unknown_user")
-                targets_by_deliverable[deliverable["id"]].append({
-                    "name": model_name,
-                    "version": version,
-                    "link": f"{API_HOST}/u/{created_by}/{deliverable.get('projectName', 'Unknown Project')}/model-registry/{model_name}/model-card?version={version}",
-                })
-    return targets_by_deliverable
-
-# Visualize policy stages
+# Function to visualize policies with stages
 def plot_policy_stages(policy_name, stages, bundle_data):
     stage_names = [stage["name"] for stage in stages]
     bundle_counts = [len(bundle_data.get(stage["name"], [])) for stage in stages]
@@ -99,92 +78,129 @@ def plot_policy_stages(policy_name, stages, bundle_data):
     ax.set_title(f"Policy: {policy_name}")
     ax.set_xlabel("Stages")
     ax.set_ylabel("Number of Bundles")
-    ax.yaxis.get_major_locator().set_params(integer=True)
+    ax.yaxis.get_major_locator().set_params(integer=True)  # Force Y-axis to use whole numbers
     plt.xticks(rotation=45, ha="right")
     plt.tight_layout()
     return fig
 
 # Main Dashboard Logic
 deliverables = fetch_deliverables()
-models = fetch_registered_models()
-deliverable_targets = parse_targets(deliverables)
+models = fetch_all_models()
 
-if deliverables:
-    # Summary Section
-    st.markdown("---")
-    st.header("Summary")
-    total_policies = len(set(bundle.get("policyName", "No Policy Name") for bundle in deliverables))
-    total_bundles = len(deliverables)
-    governed_bundles = len([d for d in deliverables if d.get("policyName")])
+# Parse Deliverables to Extract Targets
+deliverable_targets = defaultdict(list)
+for deliverable in deliverables:
+    targets = deliverable.get("targets", [])
+    for target in targets:
+        if target["type"] == "ModelVersion":
+            model_name = target["identifier"]["name"]
+            model_version = target["identifier"]["version"]
+            model_id = target["id"]
+            owner_username = target["createdBy"]["userName"]
+            project_name = deliverable.get("projectName", "Unknown Project")
+            link = f"{API_HOST}/u/{owner_username}/{project_name}/model-registry/{model_name}/model-card?version={model_version}"
+            deliverable_targets[deliverable["name"]].append({
+                "name": model_name,
+                "version": model_version,
+                "link": link,
+            })
 
-    cols = st.columns(3)
-    cols[0].metric("Total Policies", total_policies)
-    cols[1].metric("Total Bundles", total_bundles)
-    cols[2].metric("Governed Bundles", governed_bundles)
+# Calculate Summary Metrics
+total_policies = len(set(bundle.get("policyName", "No Policy Name") for bundle in deliverables))
+total_bundles = len(deliverables)
+models_in_bundles = {target["name"] for targets in deliverable_targets.values() for target in targets}
+total_models_in_bundles = len(models_in_bundles)
 
-    # Policies Adoption Section
-    st.markdown("---")
-    st.header("Policies Adoption")
-    policies = {bundle.get("policyId"): bundle.get("policyName") for bundle in deliverables if bundle.get("policyId")}
+all_projects = {model.get("project", {}).get("name", "Unknown Project") for model in models}
+total_projects = len(all_projects)
 
+projects_with_bundles = {deliverable.get("projectName", "Unknown Project") for deliverable in deliverables}
+total_projects_with_bundles = len(projects_with_bundles)
+
+# Display Summary Section
+st.markdown("---")
+st.header("Summary")
+
+cols = st.columns(6)
+cols[0].metric("Total Policies", total_policies)
+cols[1].metric("Total Bundles", total_bundles)
+cols[2].metric("Total Models", len(models))
+cols[3].metric("Models in Bundles", total_models_in_bundles)
+cols[4].metric("Total Projects", total_projects)
+cols[5].metric("Projects with Bundles", total_projects_with_bundles)
+
+# Policies Adoption Section
+st.markdown("---")
+st.header("Policies Adoption")
+policies = {bundle.get("policyId"): bundle.get("policyName") for bundle in deliverables if bundle.get("policyId")}
+
+if policies:
     for policy_id, policy_name in policies.items():
         st.subheader(f"Policy: {policy_name}")
         policy_details = fetch_policy_details(policy_id)
+
         if policy_details:
             stages = policy_details.get("stages", [])
-            bundle_data_per_stage = defaultdict(list)
-            for deliverable in deliverables:
-                if deliverable.get("policyId") == policy_id:
-                    stage_name = deliverable.get("stage", "Unknown Stage")
-                    bundle_data_per_stage[stage_name].append({
-                        "name": deliverable.get("name", "Unnamed Bundle"),
-                        "stageUpdateTime": deliverable.get("stageUpdateTime", "N/A"),
-                    })
-            fig = plot_policy_stages(policy_name, stages, bundle_data_per_stage)
-            st.pyplot(fig)
+            if stages:
+                bundle_data_per_stage = defaultdict(list)
+                for deliverable in deliverables:
+                    if deliverable.get("policyId") == policy_id:
+                        stage_name = deliverable.get("stage", "Unknown Stage")
+                        bundle_data_per_stage[stage_name].append({
+                            "name": deliverable.get("name", "Unnamed Bundle"),
+                            "stageUpdateTime": deliverable.get("stageUpdateTime", "N/A")
+                        })
 
-    # Governed Bundles Section
-    st.markdown("---")
-    st.header("Governed Bundles Details")
-    for deliverable in deliverables:
-        bundle_name = deliverable.get("name", "Unnamed Bundle")
-        project_name = deliverable.get("projectName", "Unknown Project")
-        bundle_link = f"{API_HOST}/u/{deliverable.get('createdBy', {}).get('userName', 'unknown_user')}/{project_name}/overview"
+                fig = plot_policy_stages(policy_name, stages, bundle_data_per_stage)
+                st.pyplot(fig)
 
-        st.subheader(f"Bundle: {bundle_name}")
-        st.write(f"**Project:** {project_name}")
-        st.markdown(f"[View Bundle Overview]({bundle_link})", unsafe_allow_html=True)
-
-        # Associated Targets
-        targets = deliverable_targets.get(deliverable["id"], [])
-        if targets:
-            st.write("**Associated Targets:**")
-            for target in targets:
-                st.write(f"- **Model Name:** {target['name']}, **Version:** {target['version']}")
-                st.markdown(f"[View Model Version]({target['link']})", unsafe_allow_html=True)
+                for stage_name, bundles in bundle_data_per_stage.items():
+                    st.write(f"- **Stage: {stage_name}** ({len(bundles)})")
+                    with st.expander(f"View Bundles in {stage_name}"):
+                        for bundle in bundles:
+                            st.write(f"- {bundle['name']} (Moved: {bundle['stageUpdateTime']})")
+            else:
+                st.warning(f"No stages found for policy {policy_name}.")
         else:
-            st.write("No associated targets.")
-        st.write("---")
+            st.error(f"Could not fetch details for policy {policy_name}.")
 
-    # Models Section
-    st.markdown("---")
-    st.header("Models")
-    for model in models:
-        model_name = model.get("name", "Unnamed Model")
-        project_name = model.get("project", {}).get("name", "Unknown Project")
-        owner_username = model.get("ownerUsername", "Unknown Owner")
-        model_link = f"{API_HOST}/u/{owner_username}/{project_name}/overview"
+# Governed Bundles Section
+st.markdown("---")
+st.header("Governed Bundles Details")
 
-        # Governed Bundle Mapping
-        governed_bundle = next(
-            (deliverable.get("name") for deliverable in deliverables if any(
-                t["name"] == model_name for t in deliverable_targets.get(deliverable["id"], [])
-            )),
-            "Not Governed",
-        )
+for bundle_name, targets in deliverable_targets.items():
+    st.subheader(bundle_name)
+    st.write(f"**Deliverable Targets (Models):**")
+    for target in targets:
+        st.write(f"- **Name:** {target['name']}, **Version:** {target['version']}")
+        st.markdown(f"[View Model Version]({target['link']})", unsafe_allow_html=True)
 
-        st.write(f"- **Model Name:** {model_name}, **Project:** {project_name}, **Owner:** {owner_username}")
-        st.write(f"  **Governed Bundle:** {governed_bundle}")
-        st.markdown(f"[View Model Details]({model_link})", unsafe_allow_html=True)
-else:
-    st.warning("No deliverables or models found.")
+# Models and Mapping Section
+st.markdown("---")
+st.header("Models and Mapping to Governed Bundles")
+
+model_mapping = []
+for model in models:
+    model_name = model.get("name", "Unnamed Model")
+    project_name = model.get("project", {}).get("name", "Unknown Project")
+    owner = model.get("ownerUsername", "unknown_user")
+    governed_bundles = [bundle_name for bundle_name, targets in deliverable_targets.items()
+                        if any(target["name"] == model_name for target in targets)]
+
+    model_mapping.append({
+        "name": model_name,
+        "project": project_name,
+        "owner": owner,
+        "bundles": governed_bundles,
+    })
+
+for model in model_mapping:
+    st.subheader(model["name"])
+    st.write(f"**Project:** {model['project']}")
+    st.write(f"**Owner:** {model['owner']}")
+    if model["bundles"]:
+        st.write("**Governed Bundles:**")
+        for bundle in model["bundles"]:
+            st.write(f"- {bundle}")
+    else:
+        st.write("**Governed Bundles:** None")
