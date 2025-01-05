@@ -8,6 +8,7 @@ import matplotlib.pyplot as plt
 API_HOST = os.getenv("API_HOST", "https://se-demo.domino.tech")
 API_KEY = os.getenv("API_KEY", "2627b46253dfea3a329b8c5b84748b98d5b3c5ffe6eb02a55f7177231fc8c1c4")
 
+# Streamlit app title
 st.title("Deliverables and Projects Dashboard")
 
 # Sidebar navigation
@@ -25,11 +26,14 @@ st.sidebar.write(f"API Key: {API_KEY[:5]}{'*' * (len(API_KEY) - 5)}")  # Masked 
 if not API_KEY:
     st.sidebar.error("API Key is not set. Please configure the environment variable.")
 
-# Functions to fetch data from APIs
+# Function to fetch deliverables
 @st.cache_data
 def fetch_deliverables():
     try:
-        response = requests.get(f"{API_HOST}/guardrails/v1/deliverables", auth=(API_KEY, API_KEY))
+        response = requests.get(
+            f"{API_HOST}/guardrails/v1/deliverables",
+            auth=(API_KEY, API_KEY),
+        )
         if response.status_code != 200:
             st.error(f"Error fetching deliverables: {response.status_code} - {response.text}")
             return []
@@ -38,6 +42,7 @@ def fetch_deliverables():
         st.error(f"An error occurred while fetching deliverables: {e}")
         return []
 
+# Function to fetch all projects
 @st.cache_data
 def fetch_all_projects():
     try:
@@ -51,6 +56,7 @@ def fetch_all_projects():
         st.error(f"An error occurred while fetching projects: {e}")
         return []
 
+# Function to fetch registered models
 @st.cache_data
 def fetch_registered_models():
     try:
@@ -64,129 +70,94 @@ def fetch_registered_models():
         st.error(f"An error occurred while fetching registered models: {e}")
         return []
 
-@st.cache_data
-def fetch_policy_details(policy_id):
-    try:
-        url = f"{API_HOST}/guardrails/v1/policies/{policy_id}"
-        response = requests.get(url, auth=(API_KEY, API_KEY))
-        if response.status_code != 200:
-            st.error(f"Error fetching policy details for {policy_id}: {response.status_code}")
-            return None
-        return response.json()
-    except Exception as e:
-        st.error(f"An exception occurred while fetching policy details for {policy_id}: {e}")
-        return None
-
-# Helper function to plot policies with stages
-def plot_policy_stages(policy_name, stages, bundle_data):
-    stage_names = [stage["name"] for stage in stages]
-    bundle_counts = [len(bundle_data.get(stage["name"], [])) for stage in stages]
-
-    fig, ax = plt.subplots(figsize=(10, 6))
-    ax.bar(stage_names, bundle_counts, color="skyblue", edgecolor="black")
-    ax.set_title(f"Policy: {policy_name}")
-    ax.set_xlabel("Stages")
-    ax.set_ylabel("Number of Bundles")
-    ax.yaxis.get_major_locator().set_params(integer=True)
-    plt.xticks(rotation=45, ha="right")
-    plt.tight_layout()
-    return fig
-
-# Helper function to parse task descriptions
-def parse_task_description(description):
-    try:
-        start = description.find("[")
-        end = description.find("]")
-        bundle_name = description[start + 1 : end]
-        link_start = description.find("(")
-        link_end = description.find(")")
-        bundle_link = description[link_start + 1 : link_end]
-        bundle_link = f"{API_HOST}{bundle_link}"
-        return bundle_name, bundle_link
-    except Exception:
-        return None, None
-
-# Fetch data
+# Main Logic
+all_projects = fetch_all_projects()
 deliverables = fetch_deliverables()
-projects = fetch_all_projects()
-models = fetch_registered_models()
+registered_models = fetch_registered_models()
 
 # Summary Section
 st.markdown("---")
 st.header("Summary")
+if deliverables and all_projects and registered_models:
+    total_projects = len(all_projects)
+    governed_projects = len(set(bundle["projectId"] for bundle in deliverables if bundle.get("projectId")))
+    total_models = len(registered_models)
+    governed_models = len({t["identifier"]["name"] for d in deliverables for t in d.get("targets", []) if t["type"] == "ModelVersion"})
 
-# Calculate metrics
-total_projects = len(projects)
-total_models = len(models)
-governed_bundles = [d for d in deliverables if d.get("policyName")]
-governed_models = set(
-    (target["identifier"]["name"], target["identifier"]["version"])
-    for d in governed_bundles
-    for target in d.get("targets", [])
-    if target["type"] == "ModelVersion"
-)
+    cols = st.columns(3)
+    cols[0].metric("Total Policies", len(set(d["policyName"] for d in deliverables if d.get("policyName"))))
+    cols[1].metric("Total Governed Bundles", len(deliverables))
+    cols[2].metric("Pending Tasks", len([d for d in deliverables if d.get("state") == "Pending"]))
 
-summary_metrics = {
-    "Total Projects": total_projects,
-    "Total Models": total_models,
-    "Total Policies": len(set(d.get("policyName") for d in governed_bundles)),
-    "Total Bundles": len(governed_bundles),
-    "Governed Models": len(governed_models),
-}
-
-# Display metrics
-cols = st.columns(3)
-for i, (key, value) in enumerate(summary_metrics.items()):
-    cols[i % 3].metric(key, value)
+    cols = st.columns(4)
+    cols[0].metric("Total Projects", total_projects)
+    cols[1].metric("Governed Projects", governed_projects)
+    cols[2].metric("Total Models", total_models)
+    cols[3].metric("Governed Models", governed_models)
+else:
+    st.warning("Insufficient data to display summary.")
 
 # Policies Adoption Section
 st.markdown("---")
 st.header("Policies Adoption")
-policies = {d.get("policyId"): d.get("policyName") for d in governed_bundles if d.get("policyId")}
-
-if policies:
+if deliverables:
+    policies = {d["policyId"]: d["policyName"] for d in deliverables if d.get("policyId")}
     for policy_id, policy_name in policies.items():
-        st.subheader(policy_name)
-        policy_details = fetch_policy_details(policy_id)
-        if policy_details:
-            stages = policy_details.get("stages", [])
-            stage_data = defaultdict(list)
-            for deliverable in governed_bundles:
-                if deliverable.get("policyId") == policy_id:
-                    stage_data[deliverable.get("stage", "Unknown Stage")].append(deliverable["name"])
-            if stages:
-                fig = plot_policy_stages(policy_name, stages, stage_data)
-                st.pyplot(fig)
-            for stage, bundles in stage_data.items():
-                st.write(f"**{stage}**: {len(bundles)} bundles")
-                for bundle in bundles:
-                    st.write(f"- {bundle}")
+        st.subheader(f"Policy: {policy_name}")
+        bundles_in_policy = [d for d in deliverables if d.get("policyId") == policy_id]
+        bundle_count_by_stage = defaultdict(int)
+        for d in bundles_in_policy:
+            bundle_count_by_stage[d["stage"]] += 1
+
+        # Bar chart visualization
+        fig, ax = plt.subplots()
+        ax.bar(bundle_count_by_stage.keys(), bundle_count_by_stage.values(), color="skyblue", edgecolor="black")
+        ax.set_title(f"Bundles in Policy: {policy_name}")
+        ax.set_ylabel("Count")
+        ax.set_xlabel("Stages")
+        st.pyplot(fig)
+else:
+    st.warning("No policies data available.")
 
 # Governed Bundles Section
 st.markdown("---")
 st.header("Governed Bundles Details")
-for bundle in governed_bundles:
-    st.subheader(bundle["name"])
-    st.write(f"Policy: {bundle['policyName']}")
-    st.write(f"Stage: {bundle.get('stage', 'Unknown')}")
-    for target in bundle.get("targets", []):
-        if target["type"] == "ModelVersion":
-            model_name = target["identifier"]["name"]
-            version = target["identifier"]["version"]
-            link = f"{API_HOST}/u/{target['createdBy']['userName']}/{model_name}/model-registry/{model_name}/model-card?version={version}"
-            st.write(f"- Model: [{model_name} v{version}]({link})")
+if deliverables:
+    for deliverable in deliverables:
+        st.subheader(deliverable["name"])
+        st.write(f"**Policy Name:** {deliverable.get('policyName', 'N/A')}")
+        st.write(f"**Stage:** {deliverable.get('stage', 'N/A')}")
+        targets = deliverable.get("targets", [])
+        if targets:
+            st.write("**Targets:**")
+            for target in targets:
+                if target["type"] == "ModelVersion":
+                    model_name = target["identifier"]["name"]
+                    version = target["identifier"]["version"]
+                    creator = target["createdBy"]["userName"]
+                    link = f"{API_HOST}/u/{creator}/{model_name}/model-registry/{model_name}/model-card?version={version}"
+                    st.markdown(f"- [{model_name} (Version {version})]({link})")
+else:
+    st.warning("No governed bundles to display.")
 
 # Models Overview Section
 st.markdown("---")
 st.header("Models Overview")
-for model in models:
-    governed = any(
-        (target["identifier"]["name"], target["identifier"]["version"]) == (model["name"], model.get("latestVersion"))
-        for d in governed_bundles
-        for target in d.get("targets", [])
-        if target["type"] == "ModelVersion"
-    )
-    st.subheader(model["name"])
-    st.write(f"Project: {model['project']['name']}")
-    st.write(f"Owner: {model['ownerUsername']}")
-    st.write(f"Governed Bundle: {'Yes' if governed else 'No'}")
+if registered_models:
+    model_details = []
+    for model in registered_models:
+        name = model["name"]
+        project = model["project"]["name"]
+        owner = model["ownerUsername"]
+        governed = any(
+            t["identifier"]["name"] == name and t["type"] == "ModelVersion"
+            for d in deliverables
+            for t in d.get("targets", [])
+        )
+        status = "Governed" if governed else "Not Governed"
+        model_details.append((name, project, owner, status))
+
+    st.write("### All Models")
+    st.table(model_details)
+else:
+    st.warning("No models found.")
