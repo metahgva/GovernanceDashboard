@@ -234,8 +234,7 @@ if deliverables:
                     created_by = target.get("createdBy", {}).get("userName", "unknown_user")
                     project_name = deliverable.get("projectName", "Unknown Project")
                     link = (
-                        f"{API_HOST}/u/{created_by}/{project_name}/model-registry/"
-                        f"{model_name}/model-card?version={version}"
+                        f"{API_HOST}/u/{created_by}/{project_name}/model-registry/{model_name}/model-card?version={version}"
                     )
                     model_links.append((model_name, version, link))
 
