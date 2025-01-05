@@ -282,14 +282,16 @@ if deliverables:
     #  GOVERNED BUNDLES DETAILS
     # ----------------------------------------
     st.markdown("---")
-    st.header("Governed Bundles Details")
+    st.header("Governed Bundles Details (Table)")
 
-    # Sort governed bundles by whether they have tasks first
+    # Sort governed bundles by whether they have tasks
     sorted_bundles = sorted(
         governed_bundles,
         key=lambda b: any(t["bundle_name"] == b.get("name", "") for t in approval_tasks),
         reverse=True
     )
+
+    table_rows = []
 
     for bundle in sorted_bundles:
         bundle_name = bundle.get("name", "Unnamed Bundle")
@@ -299,33 +301,32 @@ if deliverables:
         project_name = bundle.get("projectName", "Unnamed Project")
         project_owner = bundle.get("projectOwner", "unknown_user")
 
-        # Domino project link for the bundle's project
-        bundle_link = f"{API_HOST}/u/{project_owner}/{project_name}/overview"
+        # Domino project link for the bundle’s project
+        encoded_project_name = urllib.parse.quote(project_name, safe="")
+        bundle_link = f"{API_HOST}/u/{project_owner}/{encoded_project_name}/overview"
 
-        # Make the bundle name itself a link
-        st.markdown(f"## [{bundle_name}]({bundle_link})", unsafe_allow_html=True)
+        # Make the bundle name clickable
+        bundle_html = f'<a href="{bundle_link}" target="_blank">{bundle_name}</a>'
 
-        if show_debug:
-            debug_deliverable(bundle, bundle_name)
-
-        st.write(f"**Status:** {status}")
-        st.write(f"**Policy Name:** {policy_name}")
-        st.write(f"**Stage:** {stage}")
-
-        # Display tasks
+        # Collect tasks
         related_tasks = [t for t in approval_tasks if t["bundle_name"] == bundle_name]
         if related_tasks:
-            st.write("**Tasks for this Bundle:**")
+            # Build a bullet list of clickable tasks
+            tasks_bullets = []
             for task in related_tasks:
                 task_name = task["task_name"]
                 task_stage = task["stage"]
                 task_link = task["bundle_link"]
-                st.markdown(f"- [{task_name}, Stage: {task_stage}]({task_link})", unsafe_allow_html=True)
+                # Example bullet: - <a href="task_link" ...>Task Name, Stage X</a>
+                tasks_bullets.append(
+                    f'<li><a href="{task_link}" target="_blank">{task_name}, Stage: {task_stage}</a></li>'
+                )
+            tasks_html = f"<ul>{''.join(tasks_bullets)}</ul>"
         else:
-            st.write("No tasks for this bundle.")
+            tasks_html = "No tasks"
 
-        # ModelVersion links
-        model_links = []
+        # Collect ModelVersion targets
+        model_versions = []
         for target in bundle.get("targets", []):
             if target.get("type") == "ModelVersion":
                 identifier = target.get("identifier", {})
@@ -333,27 +334,36 @@ if deliverables:
                 m_version = identifier.get("version", "Unknown Version")
                 created_by = target.get("createdBy", {}).get("userName", "unknown_user")
 
-                encoded_project_name = urllib.parse.quote(project_name, safe="")
                 encoded_m_name = urllib.parse.quote(m_name, safe="")
 
-                m_card_link = (
+                # Link to the model card
+                model_card_link = (
                     f"{API_HOST}/u/{created_by}/{encoded_project_name}"
                     f"/model-registry/{encoded_m_name}/model-card?version={m_version}"
                 )
-                model_links.append((m_name, m_version, m_card_link))
-
-        if model_links:
-            st.write("**Associated Model Versions:**")
-            for m_name, m_version, m_link in model_links:
-                st.markdown(
-                    f"- **{m_name}** (Version: {m_version}) — "
-                    f"[View Model Card]({m_link})",
-                    unsafe_allow_html=True
+                model_versions.append(
+                    f'<li>{m_name} (Version: {m_version}) '
+                    f'— <a href="{model_card_link}" target="_blank">View Model Card</a></li>'
                 )
-        else:
-            st.write("No ModelVersion targets found for this bundle.")
 
-        st.write("---")
+        if model_versions:
+            model_versions_html = f"<ul>{''.join(model_versions)}</ul>"
+        else:
+            model_versions_html = "No ModelVersion targets found"
+
+        # Construct a row dict for our table
+        table_rows.append({
+            "Bundle": bundle_html,
+            "Status": status,
+            "Policy Name": policy_name,
+            "Stage": stage,
+            "Tasks": tasks_html,
+            "Model Versions": model_versions_html
+        })
+
+    # Convert to DataFrame and render as HTML
+    df_bundles = pd.DataFrame(table_rows)
+    st.write(df_bundles.to_html(escape=False), unsafe_allow_html=True)
 
     # ----------------------------------------
     #  REGISTERED MODELS TABLE
