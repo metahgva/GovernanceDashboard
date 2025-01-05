@@ -148,36 +148,6 @@ if deliverables:
     governed_bundles = [bundle for bundle in deliverables if bundle.get("policyName")]
     total_governed_bundles = len(governed_bundles)
     total_pending_tasks = 0
-
-    # Models and Bundles 
-    st.header("Deliverables and Associated Model Versions")
-    deliverable_targets = {d["id"]: d.get("targets", []) for d in deliverables}
-
-    for deliverable in deliverables:
-        st.subheader(f"Deliverable: {deliverable['name']} (ID: {deliverable['id']})")
-        targets = deliverable_targets.get(deliverable["id"], [])
-        if targets:
-            model_links = []
-            for target in targets:
-                # Only process ModelVersion targets
-                if target.get("type") == "ModelVersion":
-                    identifier = target.get("identifier", {})
-                    model_name = identifier.get("name", "Unknown Model")
-                    version = identifier.get("version", "Unknown Version")
-                    created_by = target.get("createdBy", {}).get("userName", "unknown_user")
-                    project_name = deliverable.get("projectName", "Unknown Project")
-                    link = f"{API_HOST}/u/{created_by}/{project_name}/model-registry/{model_name}/model-card?version={version}"
-                    model_links.append((model_name, version, link))
-            
-            if model_links:
-                st.write("**ModelVersion Targets:**")
-                for model_name, version, link in model_links:
-                    st.write(f"- **Model Name:** {model_name}, **Version:** {version}")
-                    st.markdown(f"[View Model Card]({link})", unsafe_allow_html=True)
-            else:
-                st.write("No ModelVersion targets found.")
-        else:
-            st.write("No targets found for this deliverable.")
             
     # Fetch tasks and count pending ones
     project_ids = {
@@ -208,6 +178,36 @@ if deliverables:
     cols[0].metric("Total Policies", total_policies)
     cols[1].metric("Total Bundles", total_bundles)
     cols[2].metric("Pending Tasks", total_pending_tasks)
+    
+    # Models and Bundles 
+    st.header("Deliverables and Associated Model Versions")
+    deliverable_targets = {d["id"]: d.get("targets", []) for d in deliverables}
+
+    for deliverable in deliverables:
+        st.subheader(f"Deliverable: {deliverable['name']} (ID: {deliverable['id']})")
+        targets = deliverable_targets.get(deliverable["id"], [])
+        if targets:
+            model_links = []
+            for target in targets:
+                # Only process ModelVersion targets
+                if target.get("type") == "ModelVersion":
+                    identifier = target.get("identifier", {})
+                    model_name = identifier.get("name", "Unknown Model")
+                    version = identifier.get("version", "Unknown Version")
+                    created_by = target.get("createdBy", {}).get("userName", "unknown_user")
+                    project_name = deliverable.get("projectName", "Unknown Project")
+                    link = f"{API_HOST}/u/{created_by}/{project_name}/model-registry/{model_name}/model-card?version={version}"
+                    model_links.append((model_name, version, link))
+            
+            if model_links:
+                st.write("**ModelVersion Targets:**")
+                for model_name, version, link in model_links:
+                    st.write(f"- **Model Name:** {model_name}, **Version:** {version}")
+                    st.markdown(f"[View Model Card]({link})", unsafe_allow_html=True)
+            else:
+                st.write("No ModelVersion targets found.")
+        else:
+            st.write("No targets found for this deliverable.")
 
     # Policies Adoption Section
     st.markdown("---")
