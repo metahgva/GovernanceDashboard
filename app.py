@@ -132,7 +132,6 @@ def parse_task_description(description):
     except Exception:
         return None, None
 
-
 # Main Dashboard Logic
 all_projects = fetch_all_projects()
 deliverables = fetch_deliverables()
@@ -143,7 +142,7 @@ if deliverables:
     st.markdown("---")
     st.header("Summary")
 
-    # -- Existing metrics --
+    # --- Existing metrics ---
     total_policies = len(set(bundle.get("policyName", "No Policy Name") for bundle in deliverables))
     total_bundles = len(deliverables)
     governed_bundles = [bundle for bundle in deliverables if bundle.get("policyName")]
@@ -180,22 +179,23 @@ if deliverables:
     cols[1].metric("Total Bundles", total_bundles)
     cols[2].metric("Pending Tasks", total_pending_tasks)
 
-    # -- New summary metrics --
-    #
+    # --- New summary metrics ---
     # 1) Count of registered models
     total_registered_models = len(models)
 
     # 2) Count of registered models that are part of a bundle (do not double count)
-    model_names_set = set(m["name"] for m in models if "name" in m)
-    model_names_in_bundles = set()
-    for d in deliverables:
-        for t in d.get("targets", []):
-            if t.get("type") == "ModelVersion":
-                identifier = t.get("identifier", {})
+    #    We store (model_name, model_version) pairs to ensure we count each version distinctly.
+    model_name_version_in_bundles = set()
+    for deliverable in deliverables:
+        for target in deliverable.get("targets", []):
+            if target.get("type") == "ModelVersion":
+                identifier = target.get("identifier", {})
                 model_name = identifier.get("name")
-                if model_name in model_names_set:
-                    model_names_in_bundles.add(model_name)
-    total_models_in_bundles = len(model_names_in_bundles)
+                model_version = identifier.get("version")
+                if model_name and model_version:
+                    model_name_version_in_bundles.add((model_name, model_version))
+
+    total_models_in_bundles = len(model_name_version_in_bundles)
 
     # 3) Total count of projects (from Domino API)
     total_projects = len(all_projects)
@@ -216,7 +216,7 @@ if deliverables:
     cols2[2].metric("Total Projects", total_projects)
     cols2[3].metric("Projects w/ Bundle", projects_with_a_bundle)
 
-    # Models and Bundles 
+    # Deliverables and Associated Model Versions
     st.header("Deliverables and Associated Model Versions")
     deliverable_targets = {d["id"]: d.get("targets", []) for d in deliverables}
 
@@ -233,9 +233,12 @@ if deliverables:
                     version = identifier.get("version", "Unknown Version")
                     created_by = target.get("createdBy", {}).get("userName", "unknown_user")
                     project_name = deliverable.get("projectName", "Unknown Project")
-                    link = f"{API_HOST}/u/{created_by}/{project_name}/model-registry/{model_name}/model-card?version={version}"
+                    link = (
+                        f"{API_HOST}/u/{created_by}/{project_name}/model-registry/"
+                        f"{model_name}/model-card?version={version}"
+                    )
                     model_links.append((model_name, version, link))
-            
+
             if model_links:
                 st.write("**ModelVersion Targets:**")
                 for model_name, version, link in model_links:
@@ -245,32 +248,6 @@ if deliverables:
                 st.write("No ModelVersion targets found.")
         else:
             st.write("No targets found for this deliverable.")
-    
-    # 1. Build a set of (model_name, latest_version) from the registry
-    registered_model_versions = set()
-    for m in models:
-        name = m.get("name")
-        latest_version = m.get("latestVersion")
-        if name and latest_version:
-            registered_model_versions.add((name, str(latest_version)))
-
-    # 2. Collect (model_name, version) from each deliverable’s ModelVersion target
-    model_versions_in_bundles = set()
-    for deliverable in deliverables:
-        for t in deliverable.get("targets", []):
-            if t.get("type") == "ModelVersion":
-                identifier = t.get("identifier", {})
-                model_name = identifier.get("name")
-                model_version = identifier.get("version")
-
-                # If the model+version is recognized among the registered_model_versions
-                if (model_name, str(model_version)) in registered_model_versions:
-                    model_versions_in_bundles.add((model_name, str(model_version)))
-
-    # 3. Count the distinct (model,version) pairs referenced in any bundle
-    total_models_in_bundles = len(model_versions_in_bundles)
-
-    st.metric("Models in a Bundle", total_models_in_bundles)
 
     # Policies Adoption Section
     st.markdown("---")
@@ -316,10 +293,12 @@ if deliverables:
     st.markdown("---")
     st.header("Governed Bundles Details")
 
-    # Sort governed bundles by whether they have tasks first
-    sorted_bundles = sorted(governed_bundles, key=lambda b: any(
-        t["bundle_name"] == b.get("name", "") for t in approval_tasks
-    ), reverse=True)
+    # Sort governed bundles by whether they have tasks
+    sorted_bundles = sorted(
+        governed_bundles,
+        key=lambda b: any(t["bundle_name"] == b.get("name", "") for t in approval_tasks),
+        reverse=True
+    )
 
     for bundle in sorted_bundles:
         bundle_name = bundle.get("name", "Unnamed Bundle")
