@@ -372,56 +372,59 @@ if deliverables:
             # Construct Domino link for each governed bundle
             link = f"{API_HOST}/u/{p_owner}/{p_name}/overview"
 
-            # Check each target for a match to this model's name
             for target in bundle.get("targets", []):
                 if target.get("type") == "ModelVersion":
                     identifier = target.get("identifier", {})
                     target_model_name = identifier.get("name")
-                    normalized_target_name = normalize_model_name(target_model_name)
-                    if normalized_target_name:
-                        model_to_bundles[normalized_target_name].append((b_name, link))
+                    if target_model_name:
+                        model_to_bundles[target_model_name].append((b_name, link))
 
         # 2) Build rows for each registered model
         model_rows = []
         for model in models:
-            m_name = normalize_model_name(model.get("name", "Unnamed Model"))
+            m_name = model.get("name", "Unnamed Model")
             project_name = model.get("project", {}).get("name", "Unknown Project")
             owner_username = model.get("ownerUsername", "Unknown Owner")
 
-            # Encode project name if needed
+            # Encode project name and model name if they contain spaces or special chars
             encoded_project_name = urllib.parse.quote(project_name, safe="")
+            encoded_model_name = urllib.parse.quote(m_name, safe="")
 
-            # Model details link (HTML)
-            model_overview_link = f"{API_HOST}/u/{owner_username}/{encoded_project_name}/overview"
-            model_details_html = f'<a href="{model_overview_link}" target="_blank">View Model Details</a>'
+            # Build the Domino Model Registry path
+            # e.g. https://se-demo.domino.tech/u/owner_username/project_name/model-registry/model_name
+            model_registry_url = (
+                f"{API_HOST}/u/{owner_username}/{encoded_project_name}"
+                f"/model-registry/{encoded_model_name}"
+            )
+
+            # Make the model name itself a link
+            model_name_html = f'<a href="{model_registry_url}" target="_blank">{m_name}</a>'
 
             # Bundles: either a bullet list or empty
             if m_name in model_to_bundles:
                 bundles_list = model_to_bundles[m_name]
-                # Create a bullet list of links
-                # Example: "<ul><li><a href='...'>BundleName</a></li>...</ul>"
                 bullets = []
                 for b_name, b_link in bundles_list:
-                    # Escape or encode if b_name might have special chars
                     safe_bundle_name = b_name.replace("<", "&lt;").replace(">", "&gt;")
-                    bullets.append(f'<li><a href="{b_link}" target="_blank">{safe_bundle_name}</a></li>')
+                    bullets.append(
+                        f'<li><a href="{b_link}" target="_blank">{safe_bundle_name}</a></li>'
+                    )
                 bundles_html = f"<ul>{''.join(bullets)}</ul>"
             else:
                 bundles_html = ""
 
+            # Build the table row (remove the "Model details (link)" column)
             model_rows.append({
-                "Name": m_name,
+                "Name": model_name_html,          # The clickable link
                 "Project": project_name,
                 "Owner": owner_username,
-                "Model details (link)": model_details_html,
-                "Bundles (links)": bundles_html
+                "Bundles": bundles_html
             })
 
-        # 3) Create a DataFrame and render as HTML
+        # 3) Create a DataFrame and render it as HTML
         df_models = pd.DataFrame(model_rows)
 
         st.write(df_models.to_html(escape=False), unsafe_allow_html=True)
-
     else:
         st.warning("No registered models found.")
 
