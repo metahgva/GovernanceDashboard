@@ -132,6 +132,14 @@ def parse_task_description(description):
         return bundle_name, bundle_link
     except Exception:
         return None, None
+    
+def debug_deliverable(deliverable, label="Deliverable JSON"):
+    """
+    Displays the raw JSON of a deliverable inside an expander
+    for debugging purposes.
+    """
+    with st.expander(label):
+        st.json(deliverable)
 
 # Main Dashboard Logic
 all_projects = fetch_all_projects()
@@ -350,6 +358,9 @@ if deliverables:
         else:
             st.write("No ModelVersion targets found for this bundle.")
 
+        # Debug: See the raw JSON of the entire deliverable/bundle
+        debug_deliverable(bundle, label=f"Raw JSON for {bundle_name}")
+        
         # A horizontal rule after each bundle
         st.write("---")
 
