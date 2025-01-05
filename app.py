@@ -108,7 +108,6 @@ def fetch_registered_models():
         return []
 
 def plot_policy_stages(policy_name, stages, bundle_data):
-    import matplotlib.pyplot as plt
     stage_names = [stage["name"] for stage in stages]
     bundle_counts = [len(bundle_data.get(stage["name"], [])) for stage in stages]
 
@@ -139,379 +138,346 @@ def debug_deliverable(deliverable, bundle_name="Deliverable JSON"):
     with st.expander(f"Debug: {bundle_name}"):
         st.json(deliverable)
 
-def normalize_model_name(name: str) -> str:
-    """
-    Convert a model name to lowercase, remove underscores
-    and spaces so 'Credit_Approval' matches 'credit approval'.
-    Adjust this logic as needed.
-    """
-    name = name.lower()
-    name = re.sub(r"[\s_]+", "", name)  # remove spaces+underscores
-    return name
-
 # ----------------------------------------------------
-#   MAIN LOGIC
+#   FETCH DATA
 # ----------------------------------------------------
 all_projects = fetch_all_projects()
 deliverables = fetch_deliverables()
 models = fetch_registered_models()
 
-if deliverables:
-    # ----------------------------------------
-    #  SUMMARY SECTION
-    # ----------------------------------------
-    st.markdown("---")
-    st.header("Summary")
+# ----------------------------------------------------
+#   BUILD A PROJECT MAP & ANNOTATE DELIVERABLES
+# ----------------------------------------------------
+project_map = {}
+for proj in all_projects:
+    pid = proj.get("id")
+    if pid:
+        project_map[pid] = proj
 
-    # Collect basic info
-    total_policies = len(set(bundle.get("policyName", "No Policy Name") for bundle in deliverables))
-    total_bundles = len(deliverables)
-    governed_bundles = [bundle for bundle in deliverables if bundle.get("policyName")]
-    total_governed_bundles = len(governed_bundles)
-    total_pending_tasks = 0
-
-    project_ids = {
-        bundle.get("projectId", "unknown_project_id") for bundle in deliverables if bundle.get("projectId")
-    }
-    approval_tasks = []
-    for project_id in project_ids:
-        if project_id == "unknown_project_id":
-            continue
-        tasks = fetch_tasks_for_project(project_id)
-        for task in tasks:
-            if isinstance(task, dict):
-                description = task.get("description", "")
-                if "Approval requested Stage" in description:
-                    bundle_name, bundle_link = parse_task_description(description)
-                    if bundle_name and bundle_link:
-                        approval_tasks.append({
-                            "task_name": task.get("title", "Unnamed Task"),
-                            "stage": description.split("Stage")[1].split(":")[0].strip(),
-                            "bundle_name": bundle_name,
-                            "bundle_link": bundle_link,
-                        })
-                        total_pending_tasks += 1
-
-    # Additional summary metrics
-    total_registered_models = len(models)
-
-    # Models in a bundle
-    model_name_version_in_bundles = set()
-    for deliverable in deliverables:
-        for target in deliverable.get("targets", []):
-            if target.get("type") == "ModelVersion":
-                identifier = target.get("identifier", {})
-                model_name = identifier.get("name")
-                model_version = identifier.get("version")
-                if model_name and model_version:
-                    model_name_version_in_bundles.add((model_name, model_version))
-    total_models_in_bundles = len(model_name_version_in_bundles)
-
-    total_projects = len(all_projects)
-
-    # Projects with at least one bundle
-    project_ids_with_bundles = set()
-    for d in deliverables:
-        pid = d.get("projectId")
-        if pid:
-            project_ids_with_bundles.add(pid)
-    projects_with_a_bundle = len(project_ids_with_bundles)
-
-    # ------------------------------------------------
-    # CREATE CLICKABLE METRICS + LINKS TO DETAILED SECTION
-    # ------------------------------------------------
-    col1, col2, col3 = st.columns(3)
-    col1.metric("Total Policies", total_policies)
-    col1.markdown("[See list](#detailed-metrics-section)", unsafe_allow_html=True)
-
-    col2.metric("Total Bundles", total_bundles)
-    col2.markdown("[See list](#detailed-metrics-section)", unsafe_allow_html=True)
-
-    col3.metric("Pending Tasks", total_pending_tasks)
-    col3.markdown("[See list](#detailed-metrics-section)", unsafe_allow_html=True)
-
-    st.markdown("")
-
-    colA, colB, colC, colD = st.columns(4)
-    colA.metric("Registered Models", total_registered_models)
-    colA.markdown("[See list](#detailed-metrics-section)", unsafe_allow_html=True)
-
-    colB.metric("Models in a Bundle", total_models_in_bundles)
-    colB.markdown("[See list](#detailed-metrics-section)", unsafe_allow_html=True)
-
-    colC.metric("Total Projects", total_projects)
-    colC.markdown("[See list](#detailed-metrics-section)", unsafe_allow_html=True)
-
-    colD.metric("Projects w/ Bundle", projects_with_a_bundle)
-    colD.markdown("[See list](#detailed-metrics-section)", unsafe_allow_html=True)
-
-    # ----------------------------------------
-    # DETAILED METRICS SECTION
-    # ----------------------------------------
-    st.markdown("---")
-    st.markdown("## Detailed Metrics Section")
-    st.markdown('<a id="detailed-metrics-section"></a>', unsafe_allow_html=True)
-
-    # 1) Policies (Detailed List)
-    all_policy_names = sorted(set(bundle.get("policyName", "No Policy Name") for bundle in deliverables))
-    with st.expander("All Policies"):
-        st.write(f"Found {len(all_policy_names)} policy names:")
-        for pol in all_policy_names:
-            st.write(f"- {pol}")
-
-    # 2) Bundles (Detailed List)
-    with st.expander("All Bundles"):
-        st.write(f"Found {len(deliverables)} bundles (deliverables):")
-        for d in deliverables:
-            st.write(f"- {d.get('name', 'Unnamed')}")
-
-    # 3) Pending Tasks (Detailed List)
-    with st.expander("Pending Tasks"):
-        st.write(f"Total Pending Tasks: {total_pending_tasks}")
-        if approval_tasks:
-            for t in approval_tasks:
-                link = t["bundle_link"]
-                st.markdown(f"- [{t['task_name']} (stage: {t['stage']})]({link})", unsafe_allow_html=True)
-        else:
-            st.write("No pending tasks")
-
-    # 4) Registered Models
-    all_model_names = sorted(m.get("name", "Unnamed Model") for m in models)
-    with st.expander("All Registered Models"):
-        st.write(f"Found {len(all_model_names)} registered models:")
-        for mn in all_model_names:
-            st.write(f"- {mn}")
-
-    # 5) Models in a Bundle (Detailed List)
-    #    We'll just list the unique (model_name) from model_name_version_in_bundles
-    #    Or show model_name + version
-    with st.expander("Models in a Bundle"):
-        st.write(f"Found {len(model_name_version_in_bundles)} model+version references:")
-        # We can group them by model name
-        model_map = defaultdict(list)
-        for (mname, mver) in model_name_version_in_bundles:
-            model_map[mname].append(mver)
-
-        for mname, versions in model_map.items():
-            st.write(f"- **{mname}**: Versions {', '.join(str(v) for v in versions)}")
-
-    # 6) Projects (Detailed List)
-    all_project_names = sorted(set(p.get("name", "Unnamed Project") for p in all_projects))
-    with st.expander("All Projects"):
-        st.write(f"Found {len(all_project_names)} total projects:")
-        for pn in all_project_names:
-            st.write(f"- {pn}")
-
-    # 7) Projects w/ a Bundle
-    #    We have project_ids_with_bundles, but let's also show their names if possible
-    with st.expander("Projects w/ Bundle"):
-        st.write(f"Found {projects_with_a_bundle} projects that have at least one deliverable/bundle.")
-        # Build a map from projectId -> project
-        pid_map = {}
-        for p in all_projects:
-            pid_val = p.get("id")
-            if pid_val:
-                pid_map[pid_val] = p
-
-        for pid_val in project_ids_with_bundles:
-            proj = pid_map.get(pid_val)
-            if proj:
-                st.write(f"- {proj.get('name', 'Unnamed Project')} (id={pid_val})")
-            else:
-                st.write(f"- (Unknown project name for id={pid_val})")
-
-    # ----------------------------------------
-    #  POLICIES ADOPTION SECTION
-    # ----------------------------------------
-    st.markdown("---")
-    st.header("Policies Adoption")
-    policies = {
-        bundle.get("policyId"): bundle.get("policyName")
-        for bundle in deliverables
-        if bundle.get("policyId")
-    }
-
-    if policies:
-        for policy_id, policy_name in policies.items():
-            st.subheader(f"Policy: {policy_name}")
-            policy_details = fetch_policy_details(policy_id)
-
-            if policy_details:
-                stages = policy_details.get("stages", [])
-                if stages:
-                    # Collect bundle data per stage
-                    bundle_data_per_stage = defaultdict(list)
-                    for deliverable in deliverables:
-                        if deliverable.get("policyId") == policy_id:
-                            stage_name = deliverable.get("stage", "Unknown Stage")
-                            bundle_data_per_stage[stage_name].append({
-                                "name": deliverable.get("name", "Unnamed Bundle"),
-                                "stageUpdateTime": deliverable.get("stageUpdateTime", "N/A"),
-                            })
-
-                    # Plot the stages and bundles
-                    fig = plot_policy_stages(policy_name, stages, bundle_data_per_stage)
-                    st.pyplot(fig)
-
-                    # List bundles in each stage
-                    for stage_name, bundles_in_stage in bundle_data_per_stage.items():
-                        st.write(f"- **Stage: {stage_name}** ({len(bundles_in_stage)})")
-                        with st.expander(f"View Bundles in {stage_name}"):
-                            for one_bundle in bundles_in_stage:
-                                bname = one_bundle["name"]
-                                moved_date = one_bundle["stageUpdateTime"]
-                                st.write(f"- {bname} (Moved: {moved_date})")
-                else:
-                    st.warning(f"No stages found for policy {policy_name}.")
-            else:
-                st.error(f"Could not fetch details for policy {policy_name}.")
+# Now annotate each deliverable with consistent "projectName" & "projectOwner"
+for d in deliverables:
+    pid = d.get("projectId")
+    if pid in project_map:
+        p_obj = project_map[pid]
+        d["projectName"] = p_obj.get("name", "Unnamed Project")
+        d["projectOwner"] = p_obj.get("ownerUsername", "unknown_user")
     else:
-        st.info("No policies found in deliverables.")
+        d["projectName"] = "UNKNOWN"
+        d["projectOwner"] = "unknown_user"
 
-    # ----------------------------------------
-    #  GOVERNED BUNDLES DETAILS (TABLE)
-    # ----------------------------------------
-    st.markdown("---")
-    st.header("Governed Bundles Details (Table)")
+if not deliverables:
+    st.warning("No deliverables found or an error occurred.")
+    st.stop()
 
-    # Sort governed bundles by whether they have tasks
-    sorted_bundles = sorted(
-        governed_bundles,
-        key=lambda b: any(t["bundle_name"] == b.get("name", "") for t in approval_tasks),
-        reverse=True
-    )
+# ----------------------------------------------------
+#   PRE-COMPUTE SUMMARY DATA
+# ----------------------------------------------------
+# 1) Total Policies
+policy_names = [d.get("policyName", "No Policy Name") for d in deliverables]
+total_policies = len(set(policy_names))
 
-    table_rows = []
-    for bundle in sorted_bundles:
-        bundle_name = bundle.get("name", "Unnamed Bundle")
-        status = bundle.get("state", "Unknown")
-        policy_name = bundle.get("policyName", "Unknown")
-        stage = bundle.get("stage", "Unknown")
-        project_name = bundle.get("projectName", "Unnamed Project")
-        project_owner = bundle.get("projectOwner", "unknown_user")
+# 2) Total Bundles
+total_bundles = len(deliverables)
 
-        # Domino project link for the bundle’s project
-        encoded_project_name = urllib.parse.quote(project_name, safe="")
-        bundle_link = f"{API_HOST}/u/{project_owner}/{encoded_project_name}/overview"
+# 3) Governed vs Non-Governed Bundles
+governed_bundles = [bundle for bundle in deliverables if bundle.get("policyName")]
+total_governed_bundles = len(governed_bundles)
 
-        # Make the bundle name clickable
-        bundle_html = f'<a href="{bundle_link}" target="_blank">{bundle_name}</a>'
+# 4) Pending Tasks
+approval_tasks = []
+for d in deliverables:
+    proj_id = d.get("projectId")
+    if not proj_id or proj_id == "unknown_project_id":
+        continue
+    tasks = fetch_tasks_for_project(proj_id)
+    for t in tasks:
+        if isinstance(t, dict):
+            desc = t.get("description", "")
+            if "Approval requested Stage" in desc:
+                b_name, b_link = parse_task_description(desc)
+                if b_name and b_link:
+                    approval_tasks.append({
+                        "task_name": t.get("title", "Unnamed Task"),
+                        "stage": desc.split("Stage")[1].split(":")[0].strip(),
+                        "bundle_name": b_name,
+                        "bundle_link": b_link,
+                    })
+total_pending_tasks = len(approval_tasks)
 
-        # Collect tasks
-        related_tasks = [t for t in approval_tasks if t["bundle_name"] == bundle_name]
-        if related_tasks:
-            tasks_bullets = []
-            for task in related_tasks:
-                task_name = task["task_name"]
-                task_stage = task["stage"]
-                task_link = task["bundle_link"]
-                tasks_bullets.append(
-                    f'<li><a href="{task_link}" target="_blank">{task_name}, Stage: {task_stage}</a></li>'
-                )
-            tasks_html = f"<ul>{''.join(tasks_bullets)}</ul>"
+# 5) Registered Models
+total_registered_models = len(models)
+
+# 6) Models in a Bundle
+model_name_version_in_bundles = set()
+for d in deliverables:
+    for tgt in d.get("targets", []):
+        if tgt.get("type") == "ModelVersion":
+            identifier = tgt.get("identifier", {})
+            m_name = identifier.get("name")
+            m_ver = identifier.get("version")
+            if m_name and m_ver:
+                model_name_version_in_bundles.add((m_name, m_ver))
+total_models_in_bundles = len(model_name_version_in_bundles)
+
+# 7) Projects
+total_projects = len(all_projects)
+
+# 8) Projects with at least one bundle
+project_ids_with_bundles = set(d.get("projectId") for d in deliverables if d.get("projectId"))
+projects_with_a_bundle = len(project_ids_with_bundles)
+
+# ----------------------------------------------------
+#   SUMMARY SECTION
+# ----------------------------------------------------
+st.markdown("---")
+st.header("Summary")
+
+col1, col2, col3 = st.columns(3)
+col1.metric("Total Policies", total_policies)
+col2.metric("Total Bundles", total_bundles)
+col3.metric("Pending Tasks", total_pending_tasks)
+
+colA, colB, colC, colD = st.columns(4)
+colA.metric("Registered Models", total_registered_models)
+colB.metric("Models in a Bundle", total_models_in_bundles)
+colC.metric("Total Projects", total_projects)
+colD.metric("Projects w/ Bundle", projects_with_a_bundle)
+
+# ----------------------------------------------------
+#   OPTIONAL: Detailed Metrics Section, etc.
+#   (As in the previous demonstration)
+# ----------------------------------------------------
+st.markdown("---")
+st.markdown("## Detailed Metrics Section")
+
+with st.expander("All Policies"):
+    st.write(f"Found {total_policies} policy names:")
+    for pol_name in sorted(set(policy_names)):
+        st.write(f"- {pol_name}")
+
+with st.expander("All Bundles"):
+    st.write(f"Found {total_bundles} total bundles/deliverables:")
+    for d in deliverables:
+        st.write(f"- {d.get('name','Unnamed')}")
+
+with st.expander("Pending Tasks"):
+    st.write(f"Total Pending Tasks: {total_pending_tasks}")
+    if approval_tasks:
+        for t in approval_tasks:
+            st.markdown(
+                f"- [{t['task_name']} (Stage: {t['stage']})]({t['bundle_link']})",
+                unsafe_allow_html=True
+            )
+    else:
+        st.write("No pending tasks")
+
+with st.expander("Registered Models"):
+    st.write(f"Found {total_registered_models} registered models:")
+    all_model_names = sorted(m.get("name","Unnamed Model") for m in models)
+    for mn in all_model_names:
+        st.write(f"- {mn}")
+
+with st.expander("Models in a Bundle"):
+    st.write(f"Found {total_models_in_bundles} distinct (model, version) references in bundles:")
+    grouped = defaultdict(list)
+    for (m_name, m_ver) in model_name_version_in_bundles:
+        grouped[m_name].append(m_ver)
+    for k, v in grouped.items():
+        st.write(f"- **{k}** => Versions: {', '.join(str(x) for x in v)}")
+
+with st.expander("All Projects"):
+    st.write(f"Found {total_projects} total projects:")
+    # We can just list project_map values
+    for pid, p_obj in project_map.items():
+        st.write(f"- {p_obj.get('name','Unnamed')} (id={pid})")
+
+with st.expander("Projects w/ Bundle"):
+    st.write(f"Found {projects_with_a_bundle} projects that contain at least one deliverable.")
+    for pid in sorted(project_ids_with_bundles):
+        if pid in project_map:
+            p_obj = project_map[pid]
+            st.write(f"- {p_obj.get('name','Unnamed')} (id={pid})")
         else:
-            tasks_html = "No tasks"
+            st.write(f"- Unknown project (id={pid})")
 
-        # Collect ModelVersion targets
-        model_versions = []
-        for target in bundle.get("targets", []):
-            if target.get("type") == "ModelVersion":
-                identifier = target.get("identifier", {})
-                m_name = identifier.get("name", "Unknown Model")
-                m_version = identifier.get("version", "Unknown Version")
-                created_by = target.get("createdBy", {}).get("userName", "unknown_user")
+# ----------------------------------------------------
+#  POLICIES ADOPTION SECTION
+# ----------------------------------------------------
+st.markdown("---")
+st.header("Policies Adoption")
+policies = {
+    d.get("policyId"): d.get("policyName") for d in deliverables if d.get("policyId")
+}
+if policies:
+    for policy_id, policy_name in policies.items():
+        st.subheader(f"Policy: {policy_name}")
+        policy_details = fetch_policy_details(policy_id)
 
-                encoded_m_name = urllib.parse.quote(m_name, safe="")
-                model_card_link = (
-                    f"{API_HOST}/u/{created_by}/{encoded_project_name}"
-                    f"/model-registry/{encoded_m_name}/model-card?version={m_version}"
-                )
-                model_versions.append(
-                    f'<li>{m_name} (Version: {m_version}) '
-                    f'— <a href="{model_card_link}" target="_blank">View Model Card</a></li>'
-                )
+        if policy_details:
+            stages = policy_details.get("stages", [])
+            if stages:
+                # Collect bundle data per stage
+                bundle_data_per_stage = defaultdict(list)
+                for deliverable in deliverables:
+                    if deliverable.get("policyId") == policy_id:
+                        stage_name = deliverable.get("stage", "Unknown Stage")
+                        bundle_data_per_stage[stage_name].append({
+                            "name": deliverable.get("name", "Unnamed Bundle"),
+                            "stageUpdateTime": deliverable.get("stageUpdateTime", "N/A"),
+                        })
 
-        if model_versions:
-            model_versions_html = f"<ul>{''.join(model_versions)}</ul>"
+                # Plot the stages and bundles
+                fig = plot_policy_stages(policy_name, stages, bundle_data_per_stage)
+                st.pyplot(fig)
+
+                # List bundles in each stage
+                for stage_name, bundles_in_stage in bundle_data_per_stage.items():
+                    st.write(f"- **Stage: {stage_name}** ({len(bundles_in_stage)})")
+                    with st.expander(f"View Bundles in {stage_name}"):
+                        for one_bundle in bundles_in_stage:
+                            bname = one_bundle["name"]
+                            moved_date = one_bundle["stageUpdateTime"]
+                            st.write(f"- {bname} (Moved: {moved_date})")
+            else:
+                st.warning(f"No stages found for policy {policy_name}.")
         else:
-            model_versions_html = "No ModelVersion targets found"
+            st.error(f"Could not fetch details for policy {policy_name}.")
+else:
+    st.info("No policies found in deliverables.")
 
-        # Construct a row dict for our table
-        table_rows.append({
-            "Bundle": bundle_html,
-            "Status": status,
-            "Policy Name": policy_name,
-            "Stage": stage,
-            "Tasks": tasks_html,
-            "Model Versions": model_versions_html
+# ----------------------------------------------------
+#  GOVERNED BUNDLES DETAILS (TABLE)
+# ----------------------------------------------------
+st.markdown("---")
+st.header("Governed Bundles Details (Table)")
+
+# Sort governed bundles by whether they have tasks
+sorted_bundles = sorted(
+    governed_bundles,
+    key=lambda b: any(t["bundle_name"] == b.get("name", "") for t in approval_tasks),
+    reverse=True
+)
+
+table_rows = []
+for bundle in sorted_bundles:
+    b_name = bundle.get("name", "Unnamed Bundle")
+    status = bundle.get("state", "Unknown")
+    pol_name = bundle.get("policyName", "Unknown")
+    stage = bundle.get("stage", "Unknown")
+    project_name = bundle.get("projectName", "Unnamed Project")
+    project_owner = bundle.get("projectOwner", "unknown_user")
+
+    encoded_project_name = urllib.parse.quote(project_name, safe="")
+    bundle_link = f"{API_HOST}/u/{project_owner}/{encoded_project_name}/overview"
+
+    # Make the bundle name clickable
+    bundle_html = f'<a href="{bundle_link}" target="_blank">{b_name}</a>'
+
+    # Collect tasks
+    related_tasks = [t for t in approval_tasks if t["bundle_name"] == b_name]
+    if related_tasks:
+        tasks_bullets = []
+        for t in related_tasks:
+            t_name = t["task_name"]
+            t_stage = t["stage"]
+            t_link = t["bundle_link"]
+            tasks_bullets.append(f'<li><a href="{t_link}" target="_blank">{t_name}, Stage: {t_stage}</a></li>')
+        tasks_html = f"<ul>{''.join(tasks_bullets)}</ul>"
+    else:
+        tasks_html = "No tasks"
+
+    # ModelVersion targets
+    model_versions = []
+    for tgt in bundle.get("targets", []):
+        if tgt.get("type") == "ModelVersion":
+            identifier = tgt.get("identifier", {})
+            m_name = identifier.get("name", "Unknown Model")
+            m_version = identifier.get("version", "Unknown Version")
+            created_by = tgt.get("createdBy", {}).get("userName", "unknown_user")
+
+            enc_m_name = urllib.parse.quote(m_name, safe="")
+            m_link = (
+                f"{API_HOST}/u/{created_by}/{encoded_project_name}"
+                f"/model-registry/{enc_m_name}/model-card?version={m_version}"
+            )
+            model_versions.append(
+                f'<li>{m_name} (Version: {m_version}) '
+                f'— <a href="{m_link}" target="_blank">View Model Card</a></li>'
+            )
+
+    if model_versions:
+        model_versions_html = f"<ul>{''.join(model_versions)}</ul>"
+    else:
+        model_versions_html = "No ModelVersion targets found"
+
+    table_rows.append({
+        "Bundle": bundle_html,
+        "Status": status,
+        "Policy Name": pol_name,
+        "Stage": stage,
+        "Tasks": tasks_html,
+        "Model Versions": model_versions_html
+    })
+
+df_bundles = pd.DataFrame(table_rows)
+st.write(df_bundles.to_html(escape=False), unsafe_allow_html=True)
+
+# ----------------------------------------------------
+#  REGISTERED MODELS TABLE
+# ----------------------------------------------------
+if models:
+    st.header("Registered Models")
+    st.write(f"Total Registered Models: {len(models)}")
+
+    # Build a dictionary: model_name -> list of (bundle_name, bundle_link)
+    model_to_bundles = defaultdict(list)
+    for bundle in governed_bundles:
+        b_name = bundle.get("name", "Unnamed Bundle")
+        p_owner = bundle.get("projectOwner", "unknown_user")
+        p_name = bundle.get("projectName", "Unnamed Project")
+        b_link = f"{API_HOST}/u/{p_owner}/{p_name}/overview"
+
+        for tgt in bundle.get("targets", []):
+            if tgt.get("type") == "ModelVersion":
+                identifier = tgt.get("identifier", {})
+                target_m_name = identifier.get("name")
+                if target_m_name:
+                    model_to_bundles[target_m_name].append((b_name, b_link))
+
+    model_rows = []
+    for model_item in models:
+        m_name = model_item.get("name", "Unnamed Model")
+        project_name = model_item.get("project", {}).get("name", "Unknown Project")
+        owner_username = model_item.get("ownerUsername", "Unknown Owner")
+
+        enc_project_name = urllib.parse.quote(project_name, safe="")
+        enc_m_name = urllib.parse.quote(m_name, safe="")
+
+        # Link to Domino Model Registry
+        model_registry_url = (
+            f"{API_HOST}/u/{owner_username}/{enc_project_name}"
+            f"/model-registry/{enc_m_name}"
+        )
+        model_name_html = f'<a href="{model_registry_url}" target="_blank">{m_name}</a>'
+
+        # Bundles bullet list
+        if m_name in model_to_bundles:
+            bullets = []
+            for (bn, bn_link) in model_to_bundles[m_name]:
+                safe_bn = bn.replace("<", "&lt;").replace(">", "&gt;")
+                bullets.append(f'<li><a href="{bn_link}" target="_blank">{safe_bn}</a></li>')
+            bundles_html = f"<ul>{''.join(bullets)}</ul>"
+        else:
+            bundles_html = ""
+
+        model_rows.append({
+            "Name": model_name_html,
+            "Project": project_name,
+            "Owner": owner_username,
+            "Bundles": bundles_html
         })
 
-    df_bundles = pd.DataFrame(table_rows)
-    st.write(df_bundles.to_html(escape=False), unsafe_allow_html=True)
-
-    # ----------------------------------------
-    #  REGISTERED MODELS TABLE
-    # ----------------------------------------
-    if models:
-        st.header("Registered Models")
-        st.write(f"Total Registered Models: {len(models)}")
-
-        # 1) Build a dictionary: model_name -> list of (bundle_name, bundle_link)
-        model_to_bundles = defaultdict(list)
-        for bundle in governed_bundles:
-            b_name = bundle.get("name", "Unnamed Bundle")
-            p_owner = bundle.get("projectOwner", "unknown_user")
-            p_name = bundle.get("projectName", "Unnamed Project")
-            bundle_link = f"{API_HOST}/u/{p_owner}/{p_name}/overview"
-
-            for target in bundle.get("targets", []):
-                if target.get("type") == "ModelVersion":
-                    identifier = target.get("identifier", {})
-                    target_model_name = identifier.get("name")
-                    if target_model_name:
-                        model_to_bundles[target_model_name].append((b_name, bundle_link))
-
-        # 2) Build rows for each registered model
-        model_rows = []
-        for model in models:
-            m_name = model.get("name", "Unnamed Model")
-            project_name = model.get("project", {}).get("name", "Unknown Project")
-            owner_username = model.get("ownerUsername", "Unknown Owner")
-
-            encoded_project_name = urllib.parse.quote(project_name, safe="")
-            encoded_model_name = urllib.parse.quote(m_name, safe="")
-
-            # Link directly to Domino Model Registry
-            model_registry_url = (
-                f"{API_HOST}/u/{owner_username}/{encoded_project_name}"
-                f"/model-registry/{encoded_model_name}"
-            )
-            model_name_html = f'<a href="{model_registry_url}" target="_blank">{m_name}</a>'
-
-            # Bundles bullet list
-            if m_name in model_to_bundles:
-                bundles_list = model_to_bundles[m_name]
-                bullets = []
-                for b_name, b_link in bundles_list:
-                    safe_bundle_name = b_name.replace("<", "&lt;").replace(">", "&gt;")
-                    bullets.append(
-                        f'<li><a href="{b_link}" target="_blank">{safe_bundle_name}</a></li>'
-                    )
-                bundles_html = f"<ul>{''.join(bullets)}</ul>"
-            else:
-                bundles_html = ""
-
-            model_rows.append({
-                "Name": model_name_html,
-                "Project": project_name,
-                "Owner": owner_username,
-                "Bundles": bundles_html
-            })
-
-        df_models = pd.DataFrame(model_rows)
-        st.write(df_models.to_html(escape=False), unsafe_allow_html=True)
-    else:
-        st.warning("No registered models found.")
-
+    df_models = pd.DataFrame(model_rows)
+    st.write(df_models.to_html(escape=False), unsafe_allow_html=True)
 else:
-    st.warning("No deliverables found or an error occurred.")
+    st.warning("No registered models found.")
