@@ -154,6 +154,9 @@ if policies:
             for deliverable in governed_bundles:
                 if deliverable.get("policyId") == policy_id:
                     stage_data[deliverable.get("stage", "Unknown Stage")].append(deliverable["name"])
+            if stages:
+                fig = plot_policy_stages(policy_name, stages, stage_data)
+                st.pyplot(fig)
             for stage, bundles in stage_data.items():
                 st.write(f"**{stage}**: {len(bundles)} bundles")
                 for bundle in bundles:
