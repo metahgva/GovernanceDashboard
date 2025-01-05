@@ -3,17 +3,20 @@ import requests
 import os
 from collections import defaultdict
 import matplotlib.pyplot as plt
-import urllib.parse  # For URL-encoding
+import urllib.parse
 import pandas as pd
 
-# Load API Host and Key from environment variables or fallback values
+# ----------------------------------------------------
+#   ENV CONFIG & CONSTANTS
+# ----------------------------------------------------
 API_HOST = os.getenv("API_HOST", "https://se-demo.domino.tech")
 API_KEY = os.getenv("API_KEY", "2627b46253dfea3a329b8c5b84748b98d5b3c5ffe6eb02a55f7177231fc8c1c4")
 
-# Streamlit app title
+# ----------------------------------------------------
+#   STREAMLIT TITLE & SIDEBAR
+# ----------------------------------------------------
 st.title("Deliverables and Projects Dashboard")
 
-# Sidebar navigation
 st.sidebar.title("Navigation")
 st.sidebar.markdown("[Summary](#summary)", unsafe_allow_html=True)
 st.sidebar.markdown("[Policies Adoption](#policies-adoption)", unsafe_allow_html=True)
@@ -23,11 +26,16 @@ st.sidebar.markdown("[Governed Bundles Details](#governed-bundles-details)", uns
 # Sidebar API Configuration
 st.sidebar.header("API Configuration")
 st.sidebar.write(f"API Host: {API_HOST}")
-st.sidebar.write(f"API Key: {API_KEY[:5]}{'*' * (len(API_KEY) - 5)}")  # Masked for security
+st.sidebar.write(f"API Key: {API_KEY[:5]}{'*' * (len(API_KEY) - 5)}")  # Mask the key for security
 if not API_KEY:
     st.sidebar.error("API Key is not set. Please configure the environment variable.")
 
-# Function to fetch deliverables
+# Optional: Debug checkbox to control JSON output
+show_debug = st.sidebar.checkbox("Show Bundle Debug Info", value=False)
+
+# ----------------------------------------------------
+#   HELPER FUNCTIONS
+# ----------------------------------------------------
 @st.cache_data
 def fetch_deliverables():
     try:
@@ -43,7 +51,6 @@ def fetch_deliverables():
         st.error(f"An error occurred while fetching deliverables: {e}")
         return []
 
-# Function to fetch all projects
 @st.cache_data
 def fetch_all_projects():
     try:
@@ -57,7 +64,6 @@ def fetch_all_projects():
         st.error(f"An error occurred while fetching projects: {e}")
         return []
 
-# Function to fetch tasks for a project
 @st.cache_data
 def fetch_tasks_for_project(project_id):
     try:
@@ -75,7 +81,6 @@ def fetch_tasks_for_project(project_id):
         st.error(f"An error occurred while fetching tasks for project {project_id}: {e}")
         return []
 
-# Function to fetch policy details
 @st.cache_data
 def fetch_policy_details(policy_id):
     try:
@@ -89,7 +94,6 @@ def fetch_policy_details(policy_id):
         st.error(f"An exception occurred while fetching policy details for {policy_id}: {e}")
         return None
 
-# Function to fetch registered models
 @st.cache_data
 def fetch_registered_models():
     try:
@@ -105,7 +109,6 @@ def fetch_registered_models():
         st.error(f"An error occurred while fetching registered models: {e}")
         return []
 
-# Function to visualize policies with stages
 def plot_policy_stages(policy_name, stages, bundle_data):
     stage_names = [stage["name"] for stage in stages]
     bundle_counts = [len(bundle_data.get(stage["name"], [])) for stage in stages]
@@ -120,7 +123,6 @@ def plot_policy_stages(policy_name, stages, bundle_data):
     plt.tight_layout()
     return fig
 
-# Function to parse task description and extract bundle name and link
 def parse_task_description(description):
     try:
         start = description.find("[")
@@ -129,32 +131,30 @@ def parse_task_description(description):
         link_start = description.find("(")
         link_end = description.find(")")
         bundle_link = description[link_start + 1 : link_end]
-        bundle_link = f"{API_HOST}{bundle_link}"  # Correct base URL
+        bundle_link = f"{API_HOST}{bundle_link}"  # In case it needs a prefix
         return bundle_name, bundle_link
     except Exception:
         return None, None
-    
-def debug_deliverable(deliverable, label="Deliverable JSON"):
-    """
-    Displays the raw JSON of a deliverable inside an expander
-    for debugging purposes.
-    """
-    with st.expander(label):
+
+# Optional: Debug function to show JSON data for a given bundle
+def debug_deliverable(deliverable, bundle_name="Deliverable JSON"):
+    with st.expander(f"Debug: {bundle_name}"):
         st.json(deliverable)
 
-# Main Dashboard Logic
+# ----------------------------------------------------
+#   MAIN LOGIC
+# ----------------------------------------------------
 all_projects = fetch_all_projects()
 deliverables = fetch_deliverables()
 models = fetch_registered_models()
 
 if deliverables:
-    # ----------------------------------------------------
-    #  Summary Section
-    # ----------------------------------------------------
+    # ----------------------------------------
+    #  SUMMARY SECTION
+    # ----------------------------------------
     st.markdown("---")
     st.header("Summary")
 
-    # Existing summary metrics
     total_policies = len(set(bundle.get("policyName", "No Policy Name") for bundle in deliverables))
     total_bundles = len(deliverables)
     governed_bundles = [bundle for bundle in deliverables if bundle.get("policyName")]
@@ -166,7 +166,6 @@ if deliverables:
         bundle.get("projectId", "unknown_project_id") for bundle in deliverables if bundle.get("projectId")
     }
     approval_tasks = []
-
     for project_id in project_ids:
         if project_id == "unknown_project_id":
             continue
@@ -207,7 +206,7 @@ if deliverables:
                     model_name_version_in_bundles.add((model_name, model_version))
     total_models_in_bundles = len(model_name_version_in_bundles)
 
-    # 3) Total count of projects (from the Domino API)
+    # 3) Total count of projects (from Domino API)
     total_projects = len(all_projects)
 
     # 4) Count of projects with at least one bundle
@@ -226,9 +225,9 @@ if deliverables:
     cols2[2].metric("Total Projects", total_projects)
     cols2[3].metric("Projects w/ Bundle", projects_with_a_bundle)
 
-    # ----------------------------------------------------
-    #  Policies Adoption Section
-    # ----------------------------------------------------
+    # ----------------------------------------
+    #  POLICIES ADOPTION SECTION
+    # ----------------------------------------
     st.markdown("---")
     st.header("Policies Adoption")
     policies = {
@@ -250,12 +249,10 @@ if deliverables:
                     for deliverable in deliverables:
                         if deliverable.get("policyId") == policy_id:
                             stage_name = deliverable.get("stage", "Unknown Stage")
-                            bundle_data_per_stage[stage_name].append(
-                                {
-                                    "name": deliverable.get("name", "Unnamed Bundle"),
-                                    "stageUpdateTime": deliverable.get("stageUpdateTime", "N/A"),
-                                }
-                            )
+                            bundle_data_per_stage[stage_name].append({
+                                "name": deliverable.get("name", "Unnamed Bundle"),
+                                "stageUpdateTime": deliverable.get("stageUpdateTime", "N/A"),
+                            })
 
                     # Plot the stages and bundles
                     fig = plot_policy_stages(policy_name, stages, bundle_data_per_stage)
@@ -266,19 +263,22 @@ if deliverables:
                         st.write(f"- **Stage: {stage_name}** ({len(bundles_in_stage)})")
                         with st.expander(f"View Bundles in {stage_name}"):
                             for one_bundle in bundles_in_stage:
-                                bundle_name = one_bundle["name"]
+                                bundle_n = one_bundle["name"]
                                 moved_date = one_bundle["stageUpdateTime"]
-                                st.write(f"- {bundle_name} (Moved: {moved_date})")
+                                st.write(f"- {bundle_n} (Moved: {moved_date})")
                 else:
                     st.warning(f"No stages found for policy {policy_name}.")
             else:
                 st.error(f"Could not fetch details for policy {policy_name}.")
+    else:
+        st.info("No policies found in deliverables.")
 
-    # ----------------------------------------------------
-    # Governed Bundles Section (Now with improved layout)
-    # ----------------------------------------------------
+    # ----------------------------------------
+    #  GOVERNED BUNDLES DETAILS
+    # ----------------------------------------
     st.markdown("---")
     st.header("Governed Bundles Details")
+    st.markdown('<div id="governed-bundles-details"></div>', unsafe_allow_html=True)
 
     # Sort governed bundles by whether they have tasks first
     sorted_bundles = sorted(
@@ -292,17 +292,20 @@ if deliverables:
         status = bundle.get("state", "Unknown")
         policy_name = bundle.get("policyName", "Unknown")
         stage = bundle.get("stage", "Unknown")
-
-        # Instead of "createdBy" or "project.ownerUsername",
-        # you can now directly use the "projectOwner" field
-        owner_username = bundle.get("projectOwner", "unknown_user")
         project_name = bundle.get("projectName", "Unnamed Project")
 
-        # Construct the link using projectOwner and projectName
+        # "projectOwner" from your JSON can be used as the correct username
+        owner_username = bundle.get("projectOwner", "unknown_user")
+
+        # Construct the bundle overview link
         bundle_link = f"{API_HOST}/u/{owner_username}/{project_name}/overview"
 
         # Make the bundle name itself a link
         st.markdown(f"## [{bundle_name}]({bundle_link})", unsafe_allow_html=True)
+
+        # Show debug JSON if user toggled in sidebar
+        if show_debug:
+            debug_deliverable(bundle, bundle_name)
 
         # Display key fields
         st.write(f"**Status:** {status}")
@@ -310,7 +313,7 @@ if deliverables:
         st.write(f"**Stage:** {stage}")
 
         # Display tasks related to this bundle
-        related_tasks = [task for task in approval_tasks if task["bundle_name"] == bundle_name]
+        related_tasks = [t for t in approval_tasks if t["bundle_name"] == bundle_name]
         if related_tasks:
             st.write("**Tasks for this Bundle:**")
             for task in related_tasks:
@@ -326,19 +329,19 @@ if deliverables:
         for target in bundle.get("targets", []):
             if target.get("type") == "ModelVersion":
                 identifier = target.get("identifier", {})
-                model_name = identifier.get("name", "Unknown Model")
-                version = identifier.get("version", "Unknown Version")
+                m_name = identifier.get("name", "Unknown Model")
+                m_version = identifier.get("version", "Unknown Version")
                 created_by = target.get("createdBy", {}).get("userName", "unknown_user")
 
-                # (Optional) URL-encode if there may be spaces or special characters
+                # URL-encode in case project name or model name has spaces
                 encoded_project_name = urllib.parse.quote(project_name, safe="")
-                encoded_model_name = urllib.parse.quote(model_name, safe="")
+                encoded_model_name = urllib.parse.quote(m_name, safe="")
 
                 model_card_link = (
-                    f"{API_HOST}/u/{created_by}/{encoded_project_name}"
-                    f"/model-registry/{encoded_model_name}/model-card?version={version}"
+                    f"{API_HOST}/u/{created_by}/{encoded_project_name}/"
+                    f"model-registry/{encoded_model_name}/model-card?version={m_version}"
                 )
-                model_links.append((model_name, version, model_card_link))
+                model_links.append((m_name, m_version, model_card_link))
 
         if model_links:
             st.write("**Associated Model Versions:**")
@@ -351,56 +354,66 @@ if deliverables:
         else:
             st.write("No ModelVersion targets found for this bundle.")
 
-        # Debug: See the raw JSON of the entire deliverable/bundle
-        debug_deliverable(bundle, label=f"Raw JSON for {bundle_name}")
-        
-        # A horizontal rule after each bundle
         st.write("---")
 
-    # ----------------------------------------------------
-    # Models Section
-    # ----------------------------------------------------
+    # ----------------------------------------
+    #  REGISTERED MODELS SECTION (TABLE)
+    # ----------------------------------------
     if models:
         st.header("Registered Models")
         st.write(f"Total Registered Models: {len(models)}")
 
-        # We'll build a list of dictionaries to create a DataFrame
-        model_rows = []
+        # 1) Build a set of model names in governed bundles
+        #    so we know which ones to show a "Bundles" link for.
+        models_in_gov_bundles = set()
+        for b in governed_bundles:
+            for t in b.get("targets", []):
+                if t.get("type") == "ModelVersion":
+                    identifier = t.get("identifier", {})
+                    model_name = identifier.get("name")
+                    if model_name:
+                        models_in_gov_bundles.add(model_name)
 
+        # 2) Build rows for each registered model
+        model_rows = []
         for model in models:
             model_name = model.get("name", "Unnamed Model")
             project_name = model.get("project", {}).get("name", "Unknown Project")
             owner_username = model.get("ownerUsername", "Unknown Owner")
 
-            # URL-encode project name to avoid broken links if it has spaces or special chars
+            # Encode project name for safety
             encoded_project_name = urllib.parse.quote(project_name, safe="")
 
-            # 1) Model Details Link
-            #    This points to the Domino "overview" page for the project
-            model_link = f"{API_HOST}/u/{owner_username}/{encoded_project_name}/overview"
-            model_details_md = f"[View Model Details]({model_link})"
+            # Model details link (HTML)
+            model_overview_link = (
+                f"{API_HOST}/u/{owner_username}/{encoded_project_name}/overview"
+            )
+            model_details_html = (
+                f'<a href="{model_overview_link}" target="_blank">View Model Details</a>'
+            )
 
-            # 2) Bundles Link
-            #    We'll simply link to the "Governed Bundles Details" section with a ?model= param.
-            #    This is just a placeholder unless you implement filtering logic in that section.
-            encoded_model_name = urllib.parse.quote(model_name, safe="")
-            bundles_link = f"#governed-bundles-details?model={encoded_model_name}"
-            bundles_md = f"[View Governed Bundles]({bundles_link})"
+            # Bundles link (only if in governed bundles)
+            if model_name in models_in_gov_bundles:
+                encoded_model_name = urllib.parse.quote(model_name, safe="")
+                # Link to the governed bundles section, possibly with a query param
+                bundles_anchor = f"#governed-bundles-details?model={encoded_model_name}"
+                bundles_html = f'<a href="{bundles_anchor}">View Governed Bundles</a>'
+            else:
+                bundles_html = ""
 
             model_rows.append({
                 "Name": model_name,
                 "Project": project_name,
                 "Owner": owner_username,
-                "Model details (link)": model_details_md,
-                "Bundles": bundles_md
+                "Model details (link)": model_details_html,
+                "Bundles": bundles_html
             })
 
-        # Convert the list of dicts to a DataFrame
+        # Convert to DataFrame
         df_models = pd.DataFrame(model_rows)
 
-        # Render the DataFrame as HTML so that the Markdown links remain clickable
+        # Render as HTML with unsafe_allow_html so links remain clickable
         st.write(df_models.to_html(escape=False), unsafe_allow_html=True)
-
     else:
         st.warning("No registered models found.")
 
