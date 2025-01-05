@@ -291,26 +291,24 @@ if deliverables:
         status = bundle.get("state", "Unknown")
         policy_name = bundle.get("policyName", "Unknown")
         stage = bundle.get("stage", "Unknown")
-        project_name = bundle.get("projectName", "Unnamed Project")
-        owner_username = bundle.get("createdBy", {}).get("username")
-        if not owner_username or owner_username == "unknown_user":
-            # Fallback to the owner of the project (if available)
-            project_data = bundle.get("project", {})
-            owner_username = project_data.get("ownerUsername")
 
-        # Construct the bundle overview link
+        # Instead of "createdBy" or "project.ownerUsername",
+        # you can now directly use the "projectOwner" field
+        owner_username = bundle.get("projectOwner", "unknown_user")
+        project_name = bundle.get("projectName", "Unnamed Project")
+
+        # Construct the link using projectOwner and projectName
         bundle_link = f"{API_HOST}/u/{owner_username}/{project_name}/overview"
 
         # Make the bundle name itself a link
-        # Example: "## [Forecasting Evidence](https://.../overview)"
         st.markdown(f"## [{bundle_name}]({bundle_link})", unsafe_allow_html=True)
 
-        # Display key info (status, policy, stage)
+        # Display key fields
         st.write(f"**Status:** {status}")
         st.write(f"**Policy Name:** {policy_name}")
         st.write(f"**Stage:** {stage}")
 
-        # Display tasks as clickable bullets
+        # Display tasks related to this bundle
         related_tasks = [task for task in approval_tasks if task["bundle_name"] == bundle_name]
         if related_tasks:
             st.write("**Tasks for this Bundle:**")
@@ -318,11 +316,7 @@ if deliverables:
                 task_name = task["task_name"]
                 task_stage = task["stage"]
                 task_link = task["bundle_link"]
-                # Turn the entire line into a hyperlink
-                st.markdown(
-                    f"- [{task_name}, Stage: {task_stage}]({task_link})",
-                    unsafe_allow_html=True
-                )
+                st.markdown(f"- [{task_name}, Stage: {task_stage}]({task_link})", unsafe_allow_html=True)
         else:
             st.write("No tasks for this bundle.")
 
@@ -335,23 +329,21 @@ if deliverables:
                 version = identifier.get("version", "Unknown Version")
                 created_by = target.get("createdBy", {}).get("userName", "unknown_user")
 
-                # URL-encode model_name and project_name in case of spaces/special chars
-                encoded_model_name = urllib.parse.quote(model_name, safe="")
+                # (Optional) URL-encode if there may be spaces or special characters
                 encoded_project_name = urllib.parse.quote(project_name, safe="")
+                encoded_model_name = urllib.parse.quote(model_name, safe="")
 
-                # Construct a URL-safe link
                 model_card_link = (
-                    f"{API_HOST}/u/{created_by}/{encoded_project_name}/model-registry/"
-                    f"{encoded_model_name}/model-card?version={version}"
+                    f"{API_HOST}/u/{created_by}/{encoded_project_name}"
+                    f"/model-registry/{encoded_model_name}/model-card?version={version}"
                 )
                 model_links.append((model_name, version, model_card_link))
 
         if model_links:
             st.write("**Associated Model Versions:**")
             for m_name, m_version, m_link in model_links:
-                # Make a bullet with the model name/version and link
                 st.markdown(
-                    f"- **{m_name}** (Version: {m_version}) &nbsp; "
+                    f"- **{m_name}** (Version: {m_version}) — "
                     f"[View Model Card]({m_link})",
                     unsafe_allow_html=True
                 )
