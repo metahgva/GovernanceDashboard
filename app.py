@@ -456,13 +456,16 @@ for bundle in sorted_bundles:
     status = bundle.get("state", "Unknown")
     pol_name = bundle.get("policyName", "Unknown")
     stage = bundle.get("stage", "Unknown")
+    
     proj_name = bundle.get("projectName", "UNKNOWN")
     proj_owner = bundle.get("projectOwner", "unknown_user")
+    
+    # --- NEW FALLBACK LOGIC ---
+    # If Domino's guardrails data didn't set projectOwner, use createdBy.userName
+    if not proj_owner or proj_owner.lower() == "unknown_user":
+        proj_owner = bundle.get("createdBy", {}).get("userName", "unknown_user")
 
-    # Build the new "bundleEvidence" link if you want the governance route:
-    # https://.../u/<owner>/<project>/governance/bundle/<bundleId>/policy/<policyId>/evidence
-    # 
-    # or fallback to "overview" if you prefer
+    # Build the 'bundleEvidence' link
     evidence_link = build_domino_link(
         owner=proj_owner,
         project_name=proj_name,
