@@ -26,6 +26,8 @@ st.sidebar.markdown("[Projects Without Bundles](#projects-without-bundles)", uns
 st.sidebar.markdown("[Governed Bundles Details](#governed-bundles-details-table)", unsafe_allow_html=True)
 st.sidebar.markdown("[Registered Models](#registered-models)", unsafe_allow_html=True)
 
+show_bundles_debug = st.sidebar.checkbox("Show Bundles Debug Info", value=False)
+
 # Sidebar API Configuration
 st.sidebar.header("API Configuration")
 st.sidebar.write(f"API Host: {API_HOST}")
@@ -389,6 +391,20 @@ sorted_bundles = sorted(
     key=lambda b: any(t["bundle_name"] == b.get("name", "") for t in approval_tasks),
     reverse=True
 )
+
+# --- Debug Section ---
+if show_bundles_debug:
+    st.subheader("Bundles Debug Info")
+    for i, bundle in enumerate(sorted_bundles, start=1):
+        st.markdown(f"**Bundle #{i}:**")
+        st.write(f"- **Name:** {bundle.get('name')}")
+        st.write(f"- **Project Name:** {bundle.get('projectName')}")
+        st.write(f"- **Project Owner:** {bundle.get('projectOwner')}")
+        st.write(f"- **Policy Name:** {bundle.get('policyName')}")
+        st.write(f"- **Stage:** {bundle.get('stage')}")
+        st.write(f"- **State:** {bundle.get('state')}")
+        st.write(f"- **Full JSON:**")
+        st.json(bundle)
 
 table_rows = []
 for bundle in sorted_bundles:
