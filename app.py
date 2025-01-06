@@ -11,7 +11,7 @@ import re
 #   ENV CONFIG & CONSTANTS
 # ----------------------------------------------------
 API_HOST = os.getenv("API_HOST", "https://se-demo.domino.tech")
-API_KEY = os.getenv("API_KEY", "2627b46253dfea3a329b8c5b84748b98d5b3c5ffe6eb02a55f7177231fc8c1c4")
+API_KEY = os.getenv("API_KEY", "YOUR_REAL_API_KEY_HERE")  # or your masked value
 
 st.title("Deliverables and Projects Dashboard")
 
@@ -71,7 +71,7 @@ def fetch_all_projects():
 def fetch_tasks_for_project(project_id):
     """
     Fetch tasks (goals) for a Domino project. 
-    Exclude tasks that are "Completed."
+    Exclude tasks that are "Completed" so we only see truly pending tasks.
     """
     try:
         url = f"{API_HOST}/api/projects/v1/projects/{project_id}/goals"
@@ -84,8 +84,8 @@ def fetch_tasks_for_project(project_id):
             st.error(f"Unexpected tasks structure for project {project_id}: {tasks_data}")
             return []
         
-        # Filter out tasks that are completed
         all_goals = tasks_data["goals"]
+        # Filter out tasks that have status "Completed"
         active_goals = [g for g in all_goals if g.get("status") != "Completed"]
         return active_goals
 
@@ -137,9 +137,8 @@ def plot_policy_stages(policy_name, stages, bundle_data):
 
 def parse_task_description(description):
     """
-    Attempt to parse a guardrails approval request from the 
-    description, which might look like:
-    "Approval requested Stage X: [BundleName](linkpath)"
+    Example description: "Approval requested Stage 2: [BundleName](linkpath)"
+    We'll parse out the [BundleName](...) to find name + link
     """
     try:
         start = description.find("[")
@@ -148,7 +147,8 @@ def parse_task_description(description):
         link_start = description.find("(")
         link_end = description.find(")")
         bundle_link = description[link_start + 1 : link_end]
-        bundle_link = f"{API_HOST}{bundle_link}"  # prefix with API_HOST
+        # In old code, we prefix with API_HOST so it's fully qualified
+        bundle_link = f"{API_HOST}{bundle_link}"
         return bundle_name, bundle_link
     except Exception:
         return None, None
@@ -156,36 +156,6 @@ def parse_task_description(description):
 def debug_deliverable(deliverable, bundle_name="Deliverable JSON"):
     with st.expander(f"Debug: {bundle_name}"):
         st.json(deliverable)
-
-def build_domino_link(owner: str, project_name: str, artifact: str = "overview", model_name: str = "", version: str = "") -> str:
-    """
-    Centralized helper to build Domino link:
-
-    :param owner: The Domino username
-    :param project_name: The Domino project name
-    :param artifact: One of:
-        - "overview" (the project overview)
-        - "model-registry" (the model registry main)
-        - "model-card" (a specific model version card)
-    :param model_name: If artifact is "model-registry" or "model-card", 
-                       supply the name of the model
-    :param version: If artifact is "model-card", supply the version
-    :return: A fully-formed Domino URL
-    """
-    base = API_HOST.strip("/")
-    enc_project = urllib.parse.quote(project_name, safe="")
-    enc_owner = owner
-    if artifact == "overview":
-        return f"{base}/u/{enc_owner}/{enc_project}/overview"
-    elif artifact == "model-registry":
-        enc_model = urllib.parse.quote(model_name, safe="")
-        return f"{base}/u/{enc_owner}/{enc_project}/model-registry/{enc_model}"
-    elif artifact == "model-card":
-        enc_model = urllib.parse.quote(model_name, safe="")
-        return f"{base}/u/{enc_owner}/{enc_project}/model-registry/{enc_model}/model-card?version={version}"
-    else:
-        # default fallback to "overview"
-        return f"{base}/u/{enc_owner}/{enc_project}/overview"
 
 # ----------------------------------------------------
 #   FETCH DATA
@@ -203,7 +173,7 @@ for proj in all_projects:
     if pid:
         project_map[pid] = proj
 
-# Now annotate each deliverable with consistent "projectName" & "projectOwner"
+# Annotate each deliverable with project name and owner
 for d in deliverables:
     pid = d.get("projectId")
     if pid in project_map:
@@ -221,24 +191,22 @@ if not deliverables:
 # ----------------------------------------------------
 #   PRE-COMPUTE SUMMARY DATA
 # ----------------------------------------------------
-# 1) Total Policies
+# 1) Policies
 policy_names = [d.get("policyName", "No Policy Name") for d in deliverables]
 total_policies = len(set(policy_names))
 
-# 2) Total Bundles
+# 2) Bundles
 total_bundles = len(deliverables)
-
-# 3) Governed vs Non-Governed Bundles
 governed_bundles = [bundle for bundle in deliverables if bundle.get("policyName")]
 total_governed_bundles = len(governed_bundles)
 
-# 4) Pending Tasks
+# 3) Pending Tasks
 approval_tasks = []
 for d in deliverables:
-    proj_id = d.get("projectId")
-    if not proj_id or proj_id == "unknown_project_id":
+    project_id = d.get("projectId")
+    if not project_id or project_id == "unknown_project_id":
         continue
-    tasks = fetch_tasks_for_project(proj_id)
+    tasks = fetch_tasks_for_project(project_id)
     for t in tasks:
         if isinstance(t, dict):
             desc = t.get("description", "")
@@ -253,10 +221,10 @@ for d in deliverables:
                     })
 total_pending_tasks = len(approval_tasks)
 
-# 5) Registered Models
+# 4) Registered Models
 total_registered_models = len(models)
 
-# 6) Models in a Bundle
+# 5) Models in a Bundle (count distinct name+version pairs)
 model_name_version_in_bundles = set()
 for d in deliverables:
     for tgt in d.get("targets", []):
@@ -268,10 +236,10 @@ for d in deliverables:
                 model_name_version_in_bundles.add((m_name, m_ver))
 total_models_in_bundles = len(model_name_version_in_bundles)
 
-# 7) Projects
+# 6) Projects
 total_projects = len(all_projects)
 
-# 8) Projects with at least one bundle
+# 7) Projects with bundles
 project_ids_with_bundles = set(d.get("projectId") for d in deliverables if d.get("projectId"))
 projects_with_a_bundle = len(project_ids_with_bundles)
 
@@ -314,50 +282,53 @@ st.markdown('<a id="detailed-metrics"></a>', unsafe_allow_html=True)
 
 with st.expander("All Policies"):
     st.write(f"Found {total_policies} policy names:")
-    for pol_name in sorted(set(policy_names)):
-        st.write(f"- {pol_name}")
+    for pol in sorted(set(policy_names)):
+        st.write(f"- {pol}")
 
 with st.expander("All Bundles"):
-    st.write(f"Found {total_bundles} total bundles/deliverables:")
+    st.write(f"Found {total_bundles} total deliverables:")
     for d in deliverables:
-        st.write(f"- {d.get('name','Unnamed')}")
+        st.write(f"- {d.get('name', 'Unnamed')}")
 
 with st.expander("Pending Tasks"):
-    st.write(f"Total Pending Tasks: {total_pending_tasks}")
+    st.write(f"Found {total_pending_tasks} pending tasks:")
     if approval_tasks:
         for t in approval_tasks:
+            # Rely on old logic: t['bundle_link'] should be a fully qualified link 
+            # thanks to parse_task_description
             st.markdown(
-                f"- [{t['task_name']} (Stage: {t['stage']})]({t['bundle_link']})",
+                f"- [{t['task_name']} (Stage: {t['stage']})]({t['bundle_link']})", 
                 unsafe_allow_html=True
             )
     else:
-        st.write("No pending tasks")
+        st.write("None")
 
 with st.expander("Registered Models"):
     st.write(f"Found {total_registered_models} registered models:")
-    all_model_names = sorted(m.get("name","Unnamed Model") for m in models)
-    for mn in all_model_names:
+    model_names = sorted(m.get("name", "Unnamed") for m in models)
+    for mn in model_names:
         st.write(f"- {mn}")
 
 with st.expander("Models in a Bundle"):
-    st.write(f"Found {total_models_in_bundles} distinct (model, version) references in bundles:")
-    grouped = defaultdict(list)
+    st.write(f"Found {total_models_in_bundles} distinct (model, version) references:")
+    # Group them by model name
+    group_map = defaultdict(list)
     for (m_name, m_ver) in model_name_version_in_bundles:
-        grouped[m_name].append(m_ver)
-    for k, v in grouped.items():
-        st.write(f"- **{k}** => Versions: {', '.join(str(x) for x in v)}")
+        group_map[m_name].append(m_ver)
+    for mod_name, versions in group_map.items():
+        st.write(f"- **{mod_name}** => Versions: {', '.join(str(v) for v in versions)}")
 
 with st.expander("All Projects"):
     st.write(f"Found {total_projects} total projects:")
     for pid, p_obj in project_map.items():
-        st.write(f"- {p_obj.get('name','Unnamed')} (id={pid})")
+        st.write(f"- {p_obj.get('name', 'Unnamed')} (id={pid})")
 
 with st.expander("Projects w/ Bundle"):
-    st.write(f"Found {projects_with_a_bundle} projects that contain at least one deliverable.")
+    st.write(f"Found {projects_with_a_bundle} projects that have at least one deliverable:")
     for pid in sorted(project_ids_with_bundles):
         if pid in project_map:
             p_obj = project_map[pid]
-            st.write(f"- {p_obj.get('name','Unnamed')} (id={pid})")
+            st.write(f"- {p_obj.get('name', 'Unnamed')} (id={pid})")
         else:
             st.write(f"- Unknown project (id={pid})")
 
@@ -368,9 +339,7 @@ st.markdown("---")
 st.header("Policies Adoption")
 st.markdown('<a id="policies-adoption"></a>', unsafe_allow_html=True)
 
-policies = {
-    d.get("policyId"): d.get("policyName") for d in deliverables if d.get("policyId")
-}
+policies = { d.get("policyId"): d.get("policyName") for d in deliverables if d.get("policyId") }
 if policies:
     for policy_id, policy_name in policies.items():
         st.subheader(f"Policy: {policy_name}")
@@ -379,43 +348,42 @@ if policies:
         if policy_details:
             stages = policy_details.get("stages", [])
             if stages:
-                # Collect bundle data per stage
+                # Collect bundles by stage
                 bundle_data_per_stage = defaultdict(list)
                 for deliverable in deliverables:
                     if deliverable.get("policyId") == policy_id:
-                        stage_name = deliverable.get("stage", "Unknown Stage")
-                        bundle_data_per_stage[stage_name].append({
+                        st_name = deliverable.get("stage", "Unknown Stage")
+                        bundle_data_per_stage[st_name].append({
                             "name": deliverable.get("name", "Unnamed Bundle"),
                             "stageUpdateTime": deliverable.get("stageUpdateTime", "N/A"),
                         })
-
-                # Plot the stages and bundles
+                # Plot
                 fig = plot_policy_stages(policy_name, stages, bundle_data_per_stage)
                 st.pyplot(fig)
 
-                # List bundles in each stage
-                for stage_name, bundles_in_stage in bundle_data_per_stage.items():
-                    st.write(f"- **Stage: {stage_name}** ({len(bundles_in_stage)})")
+                # Show bundles
+                for stage_name, items in bundle_data_per_stage.items():
+                    st.write(f"- **Stage: {stage_name}** ({len(items)})")
                     with st.expander(f"View Bundles in {stage_name}"):
-                        for one_bundle in bundles_in_stage:
-                            bname = one_bundle["name"]
-                            moved_date = one_bundle["stageUpdateTime"]
-                            st.write(f"- {bname} (Moved: {moved_date})")
+                        for one_b in items:
+                            st.write(
+                                f"- {one_b['name']} (Moved: {one_b['stageUpdateTime']})"
+                            )
             else:
-                st.warning(f"No stages found for policy {policy_name}.")
+                st.warning(f"No stages found for policy {policy_name}")
         else:
-            st.error(f"Could not fetch details for policy {policy_name}.")
+            st.error(f"Could not fetch policy details for {policy_name}")
 else:
-    st.info("No policies found in deliverables.")
+    st.info("No policies found.")
 
 # ----------------------------------------------------
-#  GOVERNED BUNDLES DETAILS (TABLE)
+#  GOVERNED BUNDLES DETAILS
 # ----------------------------------------------------
 st.markdown("---")
 st.header("Governed Bundles Details (Table)")
 st.markdown('<a id="governed-bundles-details-table"></a>', unsafe_allow_html=True)
 
-# Sort governed bundles by whether they have tasks
+# Sort
 sorted_bundles = sorted(
     governed_bundles,
     key=lambda b: any(t["bundle_name"] == b.get("name", "") for t in approval_tasks),
@@ -428,55 +396,48 @@ for bundle in sorted_bundles:
     status = bundle.get("state", "Unknown")
     pol_name = bundle.get("policyName", "Unknown")
     stage = bundle.get("stage", "Unknown")
-    project_name = bundle.get("projectName", "Unnamed Project")
-    project_owner = bundle.get("projectOwner", "unknown_user")
+    proj_name = bundle.get("projectName", "Unnamed Project")
+    proj_owner = bundle.get("projectOwner", "unknown_user")
 
-    # Build link using centralized helper
-    bundle_link = build_domino_link(
-        owner=project_owner,
-        project_name=project_name,
-        artifact="overview"
-    )
+    # Old approach for building a link to the Domino project
+    encoded_project_name = urllib.parse.quote(proj_name, safe="")
+    bundle_link = f"{API_HOST}/u/{proj_owner}/{encoded_project_name}/overview"
     bundle_html = f'<a href="{bundle_link}" target="_blank">{b_name}</a>'
 
-    # Collect tasks
-    related_tasks = [t for t in approval_tasks if t["bundle_name"] == b_name]
-    if related_tasks:
+    # Tasks
+    rel_tasks = [t for t in approval_tasks if t["bundle_name"] == b_name]
+    if rel_tasks:
         tasks_bullets = []
-        for t in related_tasks:
-            t_name = t["task_name"]
-            t_stage = t["stage"]
-            t_link = t["bundle_link"]
-            tasks_bullets.append(f'<li><a href="{t_link}" target="_blank">{t_name}, Stage: {t_stage}</a></li>')
+        for t in rel_tasks:
+            tasks_bullets.append(
+                f'<li><a href="{t["bundle_link"]}" target="_blank">'
+                f'{t["task_name"]}, Stage: {t["stage"]}</a></li>'
+            )
         tasks_html = f"<ul>{''.join(tasks_bullets)}</ul>"
     else:
         tasks_html = "No tasks"
 
-    # ModelVersion targets
-    model_versions = []
+    # Model Versions
+    mv_links = []
     for tgt in bundle.get("targets", []):
         if tgt.get("type") == "ModelVersion":
-            identifier = tgt.get("identifier", {})
-            m_name = identifier.get("name", "Unknown Model")
-            m_version = identifier.get("version", "Unknown Version")
+            ident = tgt.get("identifier", {})
+            m_name = ident.get("name", "Unknown Model")
+            m_ver = ident.get("version", "Unknown Version")
             created_by = tgt.get("createdBy", {}).get("userName", "unknown_user")
 
-            m_card_link = build_domino_link(
-                owner=created_by,
-                project_name=project_name,
-                artifact="model-card",
-                model_name=m_name,
-                version=m_version
+            enc_m_name = urllib.parse.quote(m_name, safe="")
+            # Old approach for building a link to the model card
+            model_card_link = (
+                f"{API_HOST}/u/{created_by}/{encoded_project_name}"
+                f"/model-registry/{enc_m_name}/model-card?version={m_ver}"
             )
-            model_versions.append(
-                f'<li>{m_name} (Version: {m_version}) '
-                f'— <a href="{m_card_link}" target="_blank">View Model Card</a></li>'
+            mv_links.append(
+                f'<li>{m_name} (Version: {m_ver}) '
+                f'— <a href="{model_card_link}" target="_blank">View Model Card</a></li>'
             )
 
-    if model_versions:
-        model_versions_html = f"<ul>{''.join(model_versions)}</ul>"
-    else:
-        model_versions_html = "No ModelVersion targets found"
+    mv_html = f"<ul>{''.join(mv_links)}</ul>" if mv_links else "No ModelVersion targets found"
 
     table_rows.append({
         "Bundle": bundle_html,
@@ -484,7 +445,7 @@ for bundle in sorted_bundles:
         "Policy Name": pol_name,
         "Stage": stage,
         "Tasks": tasks_html,
-        "Model Versions": model_versions_html
+        "Model Versions": mv_html
     })
 
 df_bundles = pd.DataFrame(table_rows)
@@ -500,56 +461,53 @@ st.markdown('<a id="registered-models"></a>', unsafe_allow_html=True)
 if models:
     st.write(f"Total Registered Models: {len(models)}")
 
-    # Build a dictionary: model_name -> list of (bundle_name, bundle_link)
+    # Old approach: model_name => list of (bundle_name, link)
     model_to_bundles = defaultdict(list)
-    for bundle in governed_bundles:
-        b_name = bundle.get("name", "Unnamed Bundle")
-        p_owner = bundle.get("projectOwner", "unknown_user")
-        p_name = bundle.get("projectName", "Unnamed Project")
+    for b in governed_bundles:
+        b_n = b.get("name", "Unnamed Bundle")
+        p_owner = b.get("projectOwner", "unknown_user")
+        p_name = b.get("projectName", "Unnamed Project")
 
-        # Build link for the governed bundle's project
-        b_link = build_domino_link(
-            owner=p_owner, 
-            project_name=p_name, 
-            artifact="overview"
-        )
+        enc_p_name = urllib.parse.quote(p_name, safe="")
+        b_link = f"{API_HOST}/u/{p_owner}/{enc_p_name}/overview"
 
-        for tgt in bundle.get("targets", []):
+        for tgt in b.get("targets", []):
             if tgt.get("type") == "ModelVersion":
-                identifier = tgt.get("identifier", {})
-                target_m_name = identifier.get("name")
-                if target_m_name:
-                    model_to_bundles[target_m_name].append((b_name, b_link))
+                ident = tgt.get("identifier", {})
+                mod_name = ident.get("name")
+                if mod_name:
+                    model_to_bundles[mod_name].append((b_n, b_link))
 
+    # Build table
     model_rows = []
-    for model_item in models:
-        m_name = model_item.get("name", "Unnamed Model")
-        project_name = model_item.get("project", {}).get("name", "Unknown Project")
-        owner_username = model_item.get("ownerUsername", "Unknown Owner")
+    for m in models:
+        mod_name = m.get("name", "Unnamed Model")
+        p_name = m.get("project", {}).get("name", "Unknown Project")
+        owner = m.get("ownerUsername", "Unknown Owner")
 
-        # Link to Domino Model Registry for this model
-        model_registry_url = build_domino_link(
-            owner=owner_username,
-            project_name=project_name,
-            artifact="model-registry",
-            model_name=m_name
+        enc_proj_name = urllib.parse.quote(p_name, safe="")
+        enc_m_name = urllib.parse.quote(mod_name, safe="")
+
+        # Old approach to linking model registry
+        model_registry_url = (
+            f"{API_HOST}/u/{owner}/{enc_proj_name}/model-registry/{enc_m_name}"
         )
-        model_name_html = f'<a href="{model_registry_url}" target="_blank">{m_name}</a>'
+        model_name_html = f'<a href="{model_registry_url}" target="_blank">{mod_name}</a>'
 
-        # Bundles bullet list
-        if m_name in model_to_bundles:
-            bullets = []
-            for (bn, bn_link) in model_to_bundles[m_name]:
+        if mod_name in model_to_bundles:
+            items = model_to_bundles[mod_name]
+            bul = []
+            for (bn, bn_link) in items:
                 safe_bn = bn.replace("<", "&lt;").replace(">", "&gt;")
-                bullets.append(f'<li><a href="{bn_link}" target="_blank">{safe_bn}</a></li>')
-            bundles_html = f"<ul>{''.join(bullets)}</ul>"
+                bul.append(f'<li><a href="{bn_link}" target="_blank">{safe_bn}</a></li>')
+            bundles_html = f"<ul>{''.join(bul)}</ul>"
         else:
             bundles_html = ""
 
         model_rows.append({
             "Name": model_name_html,
-            "Project": project_name,
-            "Owner": owner_username,
+            "Project": p_name,
+            "Owner": owner,
             "Bundles": bundles_html
         })
 
