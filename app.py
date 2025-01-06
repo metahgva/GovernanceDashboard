@@ -15,11 +15,16 @@ API_KEY = os.getenv("API_KEY", "2627b46253dfea3a329b8c5b84748b98d5b3c5ffe6eb02a5
 
 st.title("Deliverables and Projects Dashboard")
 
+# ----------------------------------------------------
+#   SIDEBAR NAVIGATION
+# ----------------------------------------------------
 st.sidebar.title("Navigation")
 st.sidebar.markdown("[Summary](#summary)", unsafe_allow_html=True)
+st.sidebar.markdown("[Detailed Metrics](#detailed-metrics)", unsafe_allow_html=True)
 st.sidebar.markdown("[Policies Adoption](#policies-adoption)", unsafe_allow_html=True)
 st.sidebar.markdown("[Projects Without Bundles](#projects-without-bundles)", unsafe_allow_html=True)
-st.sidebar.markdown("[Governed Bundles Details](#governed-bundles-details)", unsafe_allow_html=True)
+st.sidebar.markdown("[Governed Bundles Details](#governed-bundles-details-table)", unsafe_allow_html=True)
+st.sidebar.markdown("[Registered Models](#registered-models)", unsafe_allow_html=True)
 
 # Sidebar API Configuration
 st.sidebar.header("API Configuration")
@@ -64,6 +69,10 @@ def fetch_all_projects():
 
 @st.cache_data
 def fetch_tasks_for_project(project_id):
+    """
+    Fetch tasks (goals) for a Domino project. 
+    Exclude tasks that are "Completed."
+    """
     try:
         url = f"{API_HOST}/api/projects/v1/projects/{project_id}/goals"
         response = requests.get(url, headers={"X-Domino-Api-Key": API_KEY})
@@ -74,7 +83,12 @@ def fetch_tasks_for_project(project_id):
         if "goals" not in tasks_data:
             st.error(f"Unexpected tasks structure for project {project_id}: {tasks_data}")
             return []
-        return tasks_data["goals"]
+        
+        # Filter out tasks that are completed
+        all_goals = tasks_data["goals"]
+        active_goals = [g for g in all_goals if g.get("status") != "Completed"]
+        return active_goals
+
     except Exception as e:
         st.error(f"An error occurred while fetching tasks for project {project_id}: {e}")
         return []
@@ -122,6 +136,11 @@ def plot_policy_stages(policy_name, stages, bundle_data):
     return fig
 
 def parse_task_description(description):
+    """
+    Attempt to parse a guardrails approval request from the 
+    description, which might look like:
+    "Approval requested Stage X: [BundleName](linkpath)"
+    """
     try:
         start = description.find("[")
         end = description.find("]")
@@ -129,7 +148,7 @@ def parse_task_description(description):
         link_start = description.find("(")
         link_end = description.find(")")
         bundle_link = description[link_start + 1 : link_end]
-        bundle_link = f"{API_HOST}{bundle_link}"  # In case it needs a prefix
+        bundle_link = f"{API_HOST}{bundle_link}"  # prefix with API_HOST
         return bundle_name, bundle_link
     except Exception:
         return None, None
@@ -137,6 +156,36 @@ def parse_task_description(description):
 def debug_deliverable(deliverable, bundle_name="Deliverable JSON"):
     with st.expander(f"Debug: {bundle_name}"):
         st.json(deliverable)
+
+def build_domino_link(owner: str, project_name: str, artifact: str = "overview", model_name: str = "", version: str = "") -> str:
+    """
+    Centralized helper to build Domino link:
+
+    :param owner: The Domino username
+    :param project_name: The Domino project name
+    :param artifact: One of:
+        - "overview" (the project overview)
+        - "model-registry" (the model registry main)
+        - "model-card" (a specific model version card)
+    :param model_name: If artifact is "model-registry" or "model-card", 
+                       supply the name of the model
+    :param version: If artifact is "model-card", supply the version
+    :return: A fully-formed Domino URL
+    """
+    base = API_HOST.strip("/")
+    enc_project = urllib.parse.quote(project_name, safe="")
+    enc_owner = owner
+    if artifact == "overview":
+        return f"{base}/u/{enc_owner}/{enc_project}/overview"
+    elif artifact == "model-registry":
+        enc_model = urllib.parse.quote(model_name, safe="")
+        return f"{base}/u/{enc_owner}/{enc_project}/model-registry/{enc_model}"
+    elif artifact == "model-card":
+        enc_model = urllib.parse.quote(model_name, safe="")
+        return f"{base}/u/{enc_owner}/{enc_project}/model-registry/{enc_model}/model-card?version={version}"
+    else:
+        # default fallback to "overview"
+        return f"{base}/u/{enc_owner}/{enc_project}/overview"
 
 # ----------------------------------------------------
 #   FETCH DATA
@@ -231,24 +280,18 @@ projects_with_a_bundle = len(project_ids_with_bundles)
 # ----------------------------------------------------
 st.markdown("---")
 st.header("Summary")
+st.markdown('<a id="summary"></a>', unsafe_allow_html=True)
 
-# We'll create columns for the first row:
 col1, col2, col3 = st.columns(3)
-
-# 1) Total Policies metric
 col1.metric("Total Policies", total_policies)
-# A small link that anchors down to #detailed-metrics
 col1.markdown("[See list](#detailed-metrics)", unsafe_allow_html=True)
 
-# 2) Total Bundles metric
 col2.metric("Total Bundles", total_bundles)
 col2.markdown("[See list](#detailed-metrics)", unsafe_allow_html=True)
 
-# 3) Pending Tasks metric
 col3.metric("Pending Tasks", total_pending_tasks)
 col3.markdown("[See list](#detailed-metrics)", unsafe_allow_html=True)
 
-# Second row of summary metrics
 colA, colB, colC, colD = st.columns(4)
 colA.metric("Registered Models", total_registered_models)
 colA.markdown("[See list](#detailed-metrics)", unsafe_allow_html=True)
@@ -323,6 +366,8 @@ with st.expander("Projects w/ Bundle"):
 # ----------------------------------------------------
 st.markdown("---")
 st.header("Policies Adoption")
+st.markdown('<a id="policies-adoption"></a>', unsafe_allow_html=True)
+
 policies = {
     d.get("policyId"): d.get("policyName") for d in deliverables if d.get("policyId")
 }
@@ -368,6 +413,7 @@ else:
 # ----------------------------------------------------
 st.markdown("---")
 st.header("Governed Bundles Details (Table)")
+st.markdown('<a id="governed-bundles-details-table"></a>', unsafe_allow_html=True)
 
 # Sort governed bundles by whether they have tasks
 sorted_bundles = sorted(
@@ -385,10 +431,12 @@ for bundle in sorted_bundles:
     project_name = bundle.get("projectName", "Unnamed Project")
     project_owner = bundle.get("projectOwner", "unknown_user")
 
-    encoded_project_name = urllib.parse.quote(project_name, safe="")
-    bundle_link = f"{API_HOST}/u/{project_owner}/{encoded_project_name}/overview"
-
-    # Make the bundle name clickable
+    # Build link using centralized helper
+    bundle_link = build_domino_link(
+        owner=project_owner,
+        project_name=project_name,
+        artifact="overview"
+    )
     bundle_html = f'<a href="{bundle_link}" target="_blank">{b_name}</a>'
 
     # Collect tasks
@@ -413,14 +461,16 @@ for bundle in sorted_bundles:
             m_version = identifier.get("version", "Unknown Version")
             created_by = tgt.get("createdBy", {}).get("userName", "unknown_user")
 
-            enc_m_name = urllib.parse.quote(m_name, safe="")
-            m_link = (
-                f"{API_HOST}/u/{created_by}/{encoded_project_name}"
-                f"/model-registry/{enc_m_name}/model-card?version={m_version}"
+            m_card_link = build_domino_link(
+                owner=created_by,
+                project_name=project_name,
+                artifact="model-card",
+                model_name=m_name,
+                version=m_version
             )
             model_versions.append(
                 f'<li>{m_name} (Version: {m_version}) '
-                f'— <a href="{m_link}" target="_blank">View Model Card</a></li>'
+                f'— <a href="{m_card_link}" target="_blank">View Model Card</a></li>'
             )
 
     if model_versions:
@@ -443,8 +493,11 @@ st.write(df_bundles.to_html(escape=False), unsafe_allow_html=True)
 # ----------------------------------------------------
 #  REGISTERED MODELS TABLE
 # ----------------------------------------------------
+st.markdown("---")
+st.header("Registered Models")
+st.markdown('<a id="registered-models"></a>', unsafe_allow_html=True)
+
 if models:
-    st.header("Registered Models")
     st.write(f"Total Registered Models: {len(models)}")
 
     # Build a dictionary: model_name -> list of (bundle_name, bundle_link)
@@ -453,7 +506,13 @@ if models:
         b_name = bundle.get("name", "Unnamed Bundle")
         p_owner = bundle.get("projectOwner", "unknown_user")
         p_name = bundle.get("projectName", "Unnamed Project")
-        b_link = f"{API_HOST}/u/{p_owner}/{urllib.parse.quote(p_name, safe='')}/overview"
+
+        # Build link for the governed bundle's project
+        b_link = build_domino_link(
+            owner=p_owner, 
+            project_name=p_name, 
+            artifact="overview"
+        )
 
         for tgt in bundle.get("targets", []):
             if tgt.get("type") == "ModelVersion":
@@ -468,13 +527,12 @@ if models:
         project_name = model_item.get("project", {}).get("name", "Unknown Project")
         owner_username = model_item.get("ownerUsername", "Unknown Owner")
 
-        enc_project_name = urllib.parse.quote(project_name, safe="")
-        enc_m_name = urllib.parse.quote(m_name, safe="")
-
-        # Link to Domino Model Registry
-        model_registry_url = (
-            f"{API_HOST}/u/{owner_username}/{enc_project_name}"
-            f"/model-registry/{enc_m_name}"
+        # Link to Domino Model Registry for this model
+        model_registry_url = build_domino_link(
+            owner=owner_username,
+            project_name=project_name,
+            artifact="model-registry",
+            model_name=m_name
         )
         model_name_html = f'<a href="{model_registry_url}" target="_blank">{m_name}</a>'
 
