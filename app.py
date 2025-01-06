@@ -227,28 +227,47 @@ project_ids_with_bundles = set(d.get("projectId") for d in deliverables if d.get
 projects_with_a_bundle = len(project_ids_with_bundles)
 
 # ----------------------------------------------------
-#   SUMMARY SECTION
+#   SUMMARY SECTION (CLICKABLE)
 # ----------------------------------------------------
 st.markdown("---")
 st.header("Summary")
 
+# We'll create columns for the first row:
 col1, col2, col3 = st.columns(3)
-col1.metric("Total Policies", total_policies)
-col2.metric("Total Bundles", total_bundles)
-col3.metric("Pending Tasks", total_pending_tasks)
 
+# 1) Total Policies metric
+col1.metric("Total Policies", total_policies)
+# A small link that anchors down to #detailed-metrics
+col1.markdown("[See list](#detailed-metrics)", unsafe_allow_html=True)
+
+# 2) Total Bundles metric
+col2.metric("Total Bundles", total_bundles)
+col2.markdown("[See list](#detailed-metrics)", unsafe_allow_html=True)
+
+# 3) Pending Tasks metric
+col3.metric("Pending Tasks", total_pending_tasks)
+col3.markdown("[See list](#detailed-metrics)", unsafe_allow_html=True)
+
+# Second row of summary metrics
 colA, colB, colC, colD = st.columns(4)
 colA.metric("Registered Models", total_registered_models)
+colA.markdown("[See list](#detailed-metrics)", unsafe_allow_html=True)
+
 colB.metric("Models in a Bundle", total_models_in_bundles)
+colB.markdown("[See list](#detailed-metrics)", unsafe_allow_html=True)
+
 colC.metric("Total Projects", total_projects)
+colC.markdown("[See list](#detailed-metrics)", unsafe_allow_html=True)
+
 colD.metric("Projects w/ Bundle", projects_with_a_bundle)
+colD.markdown("[See list](#detailed-metrics)", unsafe_allow_html=True)
 
 # ----------------------------------------------------
-#   OPTIONAL: Detailed Metrics Section, etc.
-#   (As in the previous demonstration)
+#   DETAILED METRICS SECTION
 # ----------------------------------------------------
 st.markdown("---")
-st.markdown("## Detailed Metrics Section")
+st.markdown("## Detailed Metrics")
+st.markdown('<a id="detailed-metrics"></a>', unsafe_allow_html=True)
 
 with st.expander("All Policies"):
     st.write(f"Found {total_policies} policy names:")
@@ -287,7 +306,6 @@ with st.expander("Models in a Bundle"):
 
 with st.expander("All Projects"):
     st.write(f"Found {total_projects} total projects:")
-    # We can just list project_map values
     for pid, p_obj in project_map.items():
         st.write(f"- {p_obj.get('name','Unnamed')} (id={pid})")
 
@@ -435,7 +453,7 @@ if models:
         b_name = bundle.get("name", "Unnamed Bundle")
         p_owner = bundle.get("projectOwner", "unknown_user")
         p_name = bundle.get("projectName", "Unnamed Project")
-        b_link = f"{API_HOST}/u/{p_owner}/{p_name}/overview"
+        b_link = f"{API_HOST}/u/{p_owner}/{urllib.parse.quote(p_name, safe='')}/overview"
 
         for tgt in bundle.get("targets", []):
             if tgt.get("type") == "ModelVersion":
