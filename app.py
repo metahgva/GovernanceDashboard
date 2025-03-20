@@ -10,8 +10,8 @@ import re
 # ----------------------------------------------------
 #   ENV CONFIG & CONSTANTS
 # ----------------------------------------------------
-API_HOST = os.getenv("API_HOST", "https://guardi75914.workbench-accessdata-team-sandbox.domino.tech")
-API_KEY = os.getenv("API_KEY", "24cce38fe53fdc0719b19339785a4b91c1fe60d96b8726cc0b5c104460acd38c")  # Replace as needed
+API_HOST = os.getenv("API_HOST", "https://se-demo.domino.tech")
+API_KEY = os.getenv("API_KEY", "2627b46253dfea3a329b8c5b84748b98d5b3c5ffe6eb02a55f7177231fc8c1c4") 
 
 st.title("Bundles and Projects Dashboard")
 
