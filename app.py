@@ -223,6 +223,20 @@ def build_domino_link(owner: str, project_name: str, artifact: str = "overview",
         return f"{base}/u/{enc_owner}/{enc_project}/governance/policy/{policy_id}"
     return f"{base}/u/{enc_owner}/{enc_project}/overview"
 
+def plot_policy_stages(policy_name, stages, bundle_data):
+    # Use a modern matplotlib style
+    plt.style.use("seaborn-whitegrid")
+    stage_names = [stage["name"] for stage in stages]
+    bundle_counts = [len(bundle_data.get(stage["name"], [])) for stage in stages]
+    fig, ax = plt.subplots(figsize=(10, 6))
+    ax.bar(stage_names, bundle_counts, color="skyblue", edgecolor="black")
+    ax.set_title(f"Policy: {policy_name}", fontsize=16)
+    ax.set_xlabel("Stages", fontsize=14)
+    ax.set_ylabel("Number of Bundles", fontsize=14)
+    ax.tick_params(axis='x', rotation=45)
+    plt.tight_layout()
+    return fig
+
 # ----------------------------------------------------
 #   FETCH DATA
 # ----------------------------------------------------
@@ -412,6 +426,10 @@ if policies:
                 for bundle in bundles:
                     if bundle.get("policyId") == policy_id:
                         bundle_data_per_stage[bundle.get("stage", "Unknown Stage")].append(bundle)
+                # Display a modern graph for the policy adoption stages
+                fig = plot_policy_stages(policy_name, stages, bundle_data_per_stage)
+                st.pyplot(fig)
+                
                 # For each stage, list bundles as clickable links.
                 for stage_name, items in bundle_data_per_stage.items():
                     st.write(f"- **Stage: {stage_name}** ({len(items)})")
