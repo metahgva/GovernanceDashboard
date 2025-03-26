@@ -8,6 +8,49 @@ import pandas as pd
 import re
 
 # ----------------------------------------------------
+#   PAGE CONFIGURATION & CUSTOM CSS FOR MODERN LOOK
+# ----------------------------------------------------
+st.set_page_config(page_title="Bundles and Projects Dashboard", layout="wide")
+
+# Custom CSS styling to modernize the UI
+st.markdown(
+    """
+    <style>
+    body {
+      font-family: 'Segoe UI', sans-serif;
+      background-color: #f5f5f5;
+    }
+    .reportview-container .main .block-container {
+      padding-top: 2rem;
+      padding-bottom: 2rem;
+    }
+    .stMetric {
+      font-size: 1.5rem;
+      font-weight: bold;
+    }
+    .css-1d391kg, .css-18e3th9 {
+      background-color: #fff;
+      border-radius: 10px;
+      box-shadow: 2px 2px 8px rgba(0,0,0,0.1);
+      padding: 1rem;
+    }
+    h1, h2, h3 {
+      color: #333;
+    }
+    a {
+      color: #1a73e8;
+      text-decoration: none;
+      font-weight: 500;
+    }
+    a:hover {
+      text-decoration: underline;
+    }
+    </style>
+    """,
+    unsafe_allow_html=True
+)
+
+# ----------------------------------------------------
 #   ENV CONFIG & CONSTANTS
 # ----------------------------------------------------
 API_HOST = os.getenv("API_HOST", "https://se-demo.domino.tech")
@@ -271,13 +314,9 @@ st.header("Summary")
 st.markdown('<a id="summary"></a>', unsafe_allow_html=True)
 
 col1, col2, col3 = st.columns(3)
-# All policies now as clickable links: using the first bundle info
-policy_links = []
-for pol_id, (pol_name, owner, proj) in policy_info.items():
-    link = build_domino_link(owner=owner, project_name=proj, artifact="policy", policy_id=pol_id)
-    policy_links.append(f'<a href="{link}" target="_blank">{pol_name}</a>')
+# Instead of listing each policy link, show one clickable link for total policies
 col1.metric("Total Policies", total_policies)
-col1.markdown(" | ".join(policy_links), unsafe_allow_html=True)
+col1.markdown('[View All Policies](#detailed-metrics)', unsafe_allow_html=True)
 
 col2.metric("Total Bundles", total_bundles)
 col2.markdown("[See list](#detailed-metrics)", unsafe_allow_html=True)
