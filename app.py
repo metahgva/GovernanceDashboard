@@ -87,7 +87,7 @@ def api_call(method, endpoint, params=None, json=None):
     return requests.request(method, url, headers=headers, params=params, json=json)
 
 # ----------------------------------------------------
-#   HELPER FUNCTIONS
+#   HELPER FUNCTIONS (USING api_call)
 # ----------------------------------------------------
 @st.cache_data
 def fetch_bundles():
@@ -188,6 +188,7 @@ def parse_task_description(description):
 
 def plot_policy_stages_interactive(policy_name, stages, bundle_data):
     """Interactive horizontal bar chart with Plotly."""
+    import plotly.express as px
     stage_names = [stage["name"] for stage in stages]
     bundle_counts = [len(bundle_data.get(stage["name"], [])) for stage in stages]
     df = pd.DataFrame({
@@ -231,33 +232,47 @@ for b in bundles:
         b["projectOwner"] = "unknown_user"
 
 # ----------------------------------------------------
-#   GLOBAL FILTERS (Populate Options)
+#   SINGLE-SELECT GLOBAL FILTERS WITH "ALL" OPTION
 # ----------------------------------------------------
 all_policy_options = sorted({b.get("policyName") for b in bundles if b.get("policyName")})
 all_project_options = sorted({b.get("projectName") for b in bundles if b.get("projectName")})
 all_status_options = sorted({b.get("state") for b in bundles if b.get("state")})
 
-# If the user doesn't select anything, default to "All"
-if len(all_policy_options) == 0:
-    all_policy_options = ["No Policies Found"]
-if len(all_project_options) == 0:
-    all_project_options = ["No Projects Found"]
-if len(all_status_options) == 0:
-    all_status_options = ["No Status Found"]
+if not all_policy_options:
+    all_policy_options = ["(No Policies)"]
+if not all_project_options:
+    all_project_options = ["(No Projects)"]
+if not all_status_options:
+    all_status_options = ["(No Status)"]
 
-selected_policies = st.sidebar.multiselect("Select Policy", all_policy_options, all_policy_options)
-selected_projects = st.sidebar.multiselect("Select Project", all_project_options, all_project_options)
-selected_status = st.sidebar.multiselect("Select Bundle Status", all_status_options, all_status_options)
+selected_policy = st.sidebar.selectbox(
+    "Select Policy",
+    options=["All"] + all_policy_options,
+    index=0
+)
+selected_project = st.sidebar.selectbox(
+    "Select Project",
+    options=["All"] + all_project_options,
+    index=0
+)
+selected_status = st.sidebar.selectbox(
+    "Select Bundle Status",
+    options=["All"] + all_status_options,
+    index=0
+)
 
 def get_filtered_bundles():
-    """Filter bundles by selected policy, project, and status."""
+    """Filter bundles by single select policy, project, status."""
     filtered = []
     for b in bundles:
-        if b.get("policyName", "None") not in selected_policies:
+        # policy filter
+        if selected_policy != "All" and b.get("policyName", "None") != selected_policy:
             continue
-        if b.get("projectName", "None") not in selected_projects:
+        # project filter
+        if selected_project != "All" and b.get("projectName", "None") != selected_project:
             continue
-        if b.get("state", "Unknown") not in selected_status:
+        # status filter
+        if selected_status != "All" and b.get("state", "Unknown") != selected_status:
             continue
         filtered.append(b)
     return filtered
@@ -286,6 +301,22 @@ for b in filtered_bundles:
                 })
 
 # ----------------------------------------------------
+#   MODEL ATTACHMENT MAP (For version links)
+# ----------------------------------------------------
+# We'll record the projectOwner + projectName for each (modelName, version),
+# so we can build a link to the model card.
+model_attachment_map = {}
+for b in filtered_bundles:
+    owner = b.get("projectOwner", "unknown_user")
+    proj = b.get("projectName", "UNKNOWN")
+    for att in b.get("attachments", []):
+        if att.get("type") == "ModelVersion":
+            m_name = att.get("identifier", {}).get("name")
+            m_ver = att.get("identifier", {}).get("version")
+            if m_name and m_ver:
+                model_attachment_map[(m_name, m_ver)] = (owner, proj)
+
+# ----------------------------------------------------
 #   SUMMARY METRICS
 # ----------------------------------------------------
 filtered_policy_names = {b.get("policyName") for b in filtered_bundles if b.get("policyName")}
@@ -309,20 +340,24 @@ num_models_in_bundles = len(filtered_model_versions)
 filtered_project_names = {b.get("projectName") for b in filtered_bundles}
 num_projects_with_bundles = len(filtered_project_names)
 
-# For "total projects", show how many are in the selected projects list
-num_total_projects = len(selected_projects)
+# For "total projects", we interpret as how many are currently in the selected project filter
+if selected_project == "All":
+    # That means "All" is selected, so let's show how many unique projects are in the entire system
+    # or we can show how many are in the entire system. We'll do entire system:
+    all_proj_names = {b.get("projectName") for b in bundles}
+    num_total_projects = len(all_proj_names)
+else:
+    num_total_projects = 1
 
-# For "registered models", we filter by project name + if it appears in attachments (optional approach)
-filtered_model_names = set()
-for (m_name, m_ver) in filtered_model_versions:
-    filtered_model_names.add(m_name)
+# Filtered model names from the attachments
+filtered_model_names = set(mn for (mn, mv) in filtered_model_versions)
 
-# If we also want to consider the model's own project property:
+# For completeness, if the user wants to also see if the model's own project property matches
+# the selected project. We'll skip that to keep it simpler.
+num_registered_models = 0
 for m in models:
-    if m.get("project", {}).get("name") in selected_projects:
-        filtered_model_names.add(m.get("name", ""))
-
-num_registered_models = len([m for m in models if m.get("name", "") in filtered_model_names])
+    if m.get("name", "") in filtered_model_names:
+        num_registered_models += 1
 
 # ----------------------------------------------------
 #   SUMMARY SECTION
@@ -354,7 +389,6 @@ col6.markdown("[See list](#detailed-metrics)", unsafe_allow_html=True)
 col7.metric("Projects w/ Bundle", num_projects_with_bundles)
 col7.markdown("[See list](#detailed-metrics)", unsafe_allow_html=True)
 
-# Simple alert if pending tasks is high
 if num_pending_tasks > 10:
     st.warning("There are more than 10 pending tasks. Please review!")
 
@@ -366,22 +400,20 @@ st.markdown("## Detailed Metrics")
 st.markdown('<a id="detailed-metrics"></a>', unsafe_allow_html=True)
 
 with st.expander("All Policies"):
-    # Show all policies in the entire system (unfiltered)
-    pol_ids = set(b.get("policyId") for b in bundles if b.get("policyId"))
-    st.write(f"Found {len(pol_ids)} unique policy IDs. Direct links:")
+    pol_ids = {b.get("policyId") for b in bundles if b.get("policyId")}
+    st.write(f"Found {len(pol_ids)} unique policy IDs (unfiltered).")
     for b in bundles:
-        pol_id = b.get("policyId")
-        if not pol_id:
+        pid = b.get("policyId")
+        if not pid:
             continue
+        pol_name = b.get("policyName", "Unknown")
         owner = b.get("projectOwner", "unknown_user")
         proj = b.get("projectName", "UNKNOWN")
-        pol_name = b.get("policyName", "Unknown")
-        link = build_domino_link(owner=owner, project_name=proj, artifact="policy", policy_id=pol_id)
+        link = build_domino_link(owner=owner, project_name=proj, artifact="policy", policy_id=pid)
         st.markdown(f"- <a href='{link}' target='_blank'>{pol_name}</a>", unsafe_allow_html=True)
 
 with st.expander("All Bundles"):
-    # Show all bundles in the entire system (unfiltered)
-    st.write(f"Found {len(bundles)} total bundles (unfiltered). Below are direct links:")
+    st.write(f"Found {len(bundles)} total bundles (unfiltered).")
     for b in bundles:
         owner = b.get("projectOwner", "unknown_user")
         proj = b.get("projectName", "UNKNOWN")
@@ -403,13 +435,12 @@ with st.expander("Pending Tasks"):
 with st.expander("Registered Models"):
     st.write(f"Found {num_registered_models} registered models (filtered).")
     if filtered_model_names:
-        # Show direct links to model registry
         for mn in sorted(filtered_model_names):
             matched = [m for m in models if m.get("name") == mn]
             if matched:
-                m0 = matched[0]
-                p_name = m0.get("project", {}).get("name", "")
-                owner = m0.get("ownerUsername", "unknown_user")
+                first_match = matched[0]
+                p_name = first_match.get("project", {}).get("name", "")
+                owner = first_match.get("ownerUsername", "unknown_user")
                 link = build_domino_link(owner=owner, project_name=p_name,
                                          artifact="model-registry", model_name=mn)
                 st.markdown(f"- <a href='{link}' target='_blank'>{mn}</a> (Project: {p_name})", unsafe_allow_html=True)
@@ -418,14 +449,29 @@ with st.expander("Registered Models"):
     else:
         st.write("None in this filter")
 
+# --- MODELS IN A BUNDLE (NOW WITH CLICKABLE VERSION LINKS) ---
 with st.expander("Models in a Bundle"):
     st.write(f"Found {num_models_in_bundles} distinct (model, version) references (filtered).")
     if num_models_in_bundles > 0:
         group_map = defaultdict(list)
         for (m_name, m_ver) in filtered_model_versions:
             group_map[m_name].append(m_ver)
-        for mod_name, versions in group_map.items():
-            st.write(f"- **{mod_name}** => Versions: {', '.join(str(v) for v in versions)}")
+        for mod_name, versions in sorted(group_map.items()):
+            version_links = []
+            for v in sorted(versions):
+                if (mod_name, v) in model_attachment_map:
+                    (owner, proj) = model_attachment_map[(mod_name, v)]
+                    link = build_domino_link(
+                        owner=owner, project_name=proj,
+                        artifact="model-card",
+                        model_name=mod_name,
+                        version=v
+                    )
+                    version_links.append(f'<a href="{link}" target="_blank">v{v}</a>')
+                else:
+                    version_links.append(f'v{v}')
+            joined_versions = ", ".join(version_links)
+            st.markdown(f"- **{mod_name}** => Versions: {joined_versions}", unsafe_allow_html=True)
     else:
         st.write("None")
 
@@ -444,7 +490,6 @@ st.markdown("---")
 st.header("Policies Adoption")
 st.markdown('<a id="policies-adoption"></a>', unsafe_allow_html=True)
 
-# Build a dict of policy_id -> policy_name
 policies_dict = {}
 for b in bundles:
     pid = b.get("policyId")
@@ -455,26 +500,23 @@ for b in bundles:
 if not policies_dict:
     st.info("No policies found.")
 else:
-    # Show only policies that match the selected filters for policyName
     for policy_id, policy_name in policies_dict.items():
-        if policy_name not in selected_policies:
+        # If user selected a single policy and it's not this one, skip
+        if selected_policy != "All" and policy_name != selected_policy:
             continue
         st.subheader(f"Policy: {policy_name}")
         details = fetch_policy_details(policy_id)
         if details:
             stages = details.get("stages", [])
             if stages:
-                # For each stage, collect filtered bundles
                 stage_map = defaultdict(list)
-                for b in filtered_bundles:
-                    if b.get("policyId") == policy_id:
-                        stg = b.get("stage", "Unknown Stage")
-                        stage_map[stg].append(b)
-                # Plot
+                for fb in filtered_bundles:
+                    if fb.get("policyId") == policy_id:
+                        stg = fb.get("stage", "Unknown Stage")
+                        stage_map[stg].append(fb)
                 fig = plot_policy_stages_interactive(policy_name, stages, stage_map)
                 st.plotly_chart(fig, use_container_width=True)
 
-                # List them
                 for stage_name, items in stage_map.items():
                     st.write(f"- **Stage: {stage_name}** ({len(items)})")
                     with st.expander(f"View Bundles in {stage_name}"):
@@ -502,7 +544,6 @@ st.header("Governed Bundles Details (Table)")
 st.markdown('<a id="governed-bundles-details-table"></a>', unsafe_allow_html=True)
 
 governed_bundles = [b for b in filtered_bundles if b.get("policyName")]
-# Sort so that bundles with pending tasks appear first
 governed_bundles = sorted(
     governed_bundles,
     key=lambda b: any(t["bundle_name"] == b.get("name", "") for t in approval_tasks),
@@ -534,11 +575,9 @@ for b in governed_bundles:
     policy_url = build_domino_link(owner=owner, project_name=proj,
                                    artifact="policy", policy_id=pol_id)
 
-    # Convert to clickable links
     b_html = f'<a href="{evidence_url}" target="_blank">{b_name}</a>'
     pol_html = f'<a href="{policy_url}" target="_blank">{pol_name}</a>'
 
-    # Tasks
     rel_tasks = [t for t in approval_tasks if t["bundle_name"] == b_name]
     if rel_tasks:
         tasks_list = []
@@ -560,7 +599,10 @@ for b in governed_bundles:
     })
 
 df_gov = pd.DataFrame(gov_table_rows)
-st.markdown(df_gov.to_html(escape=False, index=False), unsafe_allow_html=True)
+if len(df_gov) > 0:
+    st.markdown(df_gov.to_html(escape=False, index=False), unsafe_allow_html=True)
+else:
+    st.write("No governed bundles match the current filters.")
 
 # ----------------------------------------------------
 #   REGISTERED MODELS (Table)
