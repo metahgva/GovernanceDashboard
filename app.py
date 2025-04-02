@@ -10,7 +10,7 @@ from collections import defaultdict
 # ----------------------------------------------------
 #   PAGE CONFIGURATION & CUSTOM CSS
 # ----------------------------------------------------
-st.set_page_config(page_title="Bundles and Projects Dashboard", layout="wide")
+st.set_page_config(page_title="Governance Dashboard", layout="wide")
 
 st.markdown(
     """
