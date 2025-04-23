@@ -1,53 +1,11 @@
 import streamlit as st
 import requests
 import os
+from collections import defaultdict
 import matplotlib.pyplot as plt
 import urllib.parse
 import pandas as pd
 import re
-from collections import defaultdict
-
-# ----------------------------------------------------
-#   PAGE CONFIGURATION & CUSTOM CSS FOR MODERN LOOK
-# ----------------------------------------------------
-st.set_page_config(page_title="Bundles and Projects Dashboard", layout="wide")
-
-st.markdown(
-    """
-    <style>
-    body {
-      font-family: 'Segoe UI', sans-serif;
-      background-color: #f5f5f5;
-    }
-    .reportview-container .main .block-container {
-      padding-top: 2rem;
-      padding-bottom: 2rem;
-    }
-    .stMetric {
-      font-size: 1.5rem;
-      font-weight: bold;
-    }
-    .css-1d391kg, .css-18e3th9 {
-      background-color: #fff;
-      border-radius: 10px;
-      box-shadow: 2px 2px 8px rgba(0,0,0,0.1);
-      padding: 1rem;
-    }
-    h1, h2, h3 {
-      color: #333;
-    }
-    a {
-      color: #1a73e8;
-      text-decoration: none;
-      font-weight: 500;
-    }
-    a:hover {
-      text-decoration: underline;
-    }
-    </style>
-    """,
-    unsafe_allow_html=True
-)
 
 # ----------------------------------------------------
 #   ENV CONFIG & CONSTANTS
@@ -55,8 +13,7 @@ st.markdown(
 API_HOST = os.getenv("API_HOST", "https://dev.qbe.domino.tech")
 API_KEY = os.getenv("API_KEY", "63e426d6d476f2b2798e6d66c2221bcbf53edcd95988cb18d67e4cf7c8b06043")
 
-
-st.title("DEV.QBE Governance Dashboard")
+st.title("Bundles and Projects Dashboard")
 
 # ----------------------------------------------------
 #   SIDEBAR NAVIGATION
@@ -68,7 +25,6 @@ st.sidebar.markdown("[Policies Adoption](#policies-adoption)", unsafe_allow_html
 st.sidebar.markdown("[Projects Without Bundles](#projects-without-bundles)", unsafe_allow_html=True)
 st.sidebar.markdown("[Governed Bundles Details](#governed-bundles-details-table)", unsafe_allow_html=True)
 st.sidebar.markdown("[Registered Models](#registered-models)", unsafe_allow_html=True)
-st.sidebar.markdown("[Bundles by Project](#bundles-by-project)", unsafe_allow_html=True)
 
 # Sidebar API Configuration (hide API key)
 st.sidebar.header("API Configuration")
@@ -91,6 +47,10 @@ if st.button("Refresh Data"):
 #   CONSOLIDATED API CALL HELPER
 # ----------------------------------------------------
 def api_call(method, endpoint, params=None, json=None):
+    """
+    Constructs the full URL from API_HOST, sets the required header,
+    and makes an API request.
+    """
     headers = {"X-Domino-Api-Key": API_KEY}
     url = f"{API_HOST}{endpoint}"
     response = requests.request(method, url, headers=headers, params=params, json=json)
@@ -166,15 +126,15 @@ def fetch_registered_models():
         return []
 
 def plot_policy_stages(policy_name, stages, bundle_data):
-    plt.style.use("seaborn-whitegrid")
     stage_names = [stage["name"] for stage in stages]
     bundle_counts = [len(bundle_data.get(stage["name"], [])) for stage in stages]
     fig, ax = plt.subplots(figsize=(10, 6))
     ax.bar(stage_names, bundle_counts, color="skyblue", edgecolor="black")
-    ax.set_title(f"Policy: {policy_name}", fontsize=16)
-    ax.set_xlabel("Stages", fontsize=14)
-    ax.set_ylabel("Number of Bundles", fontsize=14)
-    ax.tick_params(axis='x', rotation=45)
+    ax.set_title(f"Policy: {policy_name}")
+    ax.set_xlabel("Stages")
+    ax.set_ylabel("Number of Bundles")
+    ax.yaxis.get_major_locator().set_params(integer=True)
+    plt.xticks(rotation=45, ha="right")
     plt.tight_layout()
     return fig
 
@@ -198,6 +158,10 @@ def debug_bundle(bundle, bundle_name="Bundle JSON"):
 def build_domino_link(owner: str, project_name: str, artifact: str = "overview",
                       model_name: str = "", version: str = "",
                       bundle_id: str = "", policy_id: str = "") -> str:
+    """
+    Centralized helper to build Domino links.
+    Added 'policy' artifact to link directly to a policy details page.
+    """
     base = API_HOST.rstrip("/")
     enc_owner = owner
     enc_project = urllib.parse.quote(project_name, safe="")
@@ -212,24 +176,26 @@ def build_domino_link(owner: str, project_name: str, artifact: str = "overview",
     elif artifact == "bundleEvidence":
         return f"{base}/u/{enc_owner}/{enc_project}/governance/bundle/{bundle_id}/policy/{policy_id}/evidence"
     elif artifact == "policy":
+        # Link to a policy details page (assuming this route exists)
         return f"{base}/u/{enc_owner}/{enc_project}/governance/policy/{policy_id}"
     return f"{base}/u/{enc_owner}/{enc_project}/overview"
 
 # ----------------------------------------------------
-#   FETCH DATA & BUILD MAPPINGS
+#   FETCH DATA
 # ----------------------------------------------------
 all_projects = fetch_all_projects()
 bundles = fetch_bundles()
 models = fetch_registered_models()
 
-# Build project map
+# ----------------------------------------------------
+#   BUILD A PROJECT MAP & ANNOTATE BUNDLES
+# ----------------------------------------------------
 project_map = {}
 for proj in all_projects:
     pid = proj.get("id")
     if pid:
         project_map[pid] = proj
 
-# Annotate bundles with project data
 for b in bundles:
     pid = b.get("projectId")
     if pid in project_map:
@@ -244,7 +210,10 @@ if not bundles:
     st.warning("No bundles found or an error occurred.")
     st.stop()
 
-# Pre-compute summary data
+# ----------------------------------------------------
+#   PRE-COMPUTE SUMMARY DATA
+# ----------------------------------------------------
+# Build a dictionary mapping policy_id -> (policy_name, owner, project) from the first bundle that has it.
 policy_info = {}
 for b in bundles:
     pol_id = b.get("policyId")
@@ -295,22 +264,20 @@ project_ids_with_bundles = set(b.get("projectId") for b in bundles if b.get("pro
 projects_with_a_bundle = len(project_ids_with_bundles)
 
 # ----------------------------------------------------
-#   GLOBAL FILTERS (Sidebar)
-# ----------------------------------------------------
-st.sidebar.header("Global Filters")
-selected_policy = st.sidebar.selectbox("Select Policy", options=["All"] + sorted({info[0] for info in policy_info.values()}))
-selected_project = st.sidebar.selectbox("Select Project", options=["All"] + sorted({p_obj.get("name", "Unnamed Project") for p_obj in project_map.values()}))
-
-# ----------------------------------------------------
-#   SUMMARY SECTION
+#   SUMMARY SECTION (CLICKABLE)
 # ----------------------------------------------------
 st.markdown("---")
 st.header("Summary")
 st.markdown('<a id="summary"></a>', unsafe_allow_html=True)
 
 col1, col2, col3 = st.columns(3)
+# All policies now as clickable links: using the first bundle info
+policy_links = []
+for pol_id, (pol_name, owner, proj) in policy_info.items():
+    link = build_domino_link(owner=owner, project_name=proj, artifact="policy", policy_id=pol_id)
+    policy_links.append(f'<a href="{link}" target="_blank">{pol_name}</a>')
 col1.metric("Total Policies", total_policies)
-col1.markdown('[View All Policies](#detailed-metrics)', unsafe_allow_html=True)
+col1.markdown(" | ".join(policy_links), unsafe_allow_html=True)
 
 col2.metric("Total Bundles", total_bundles)
 col2.markdown("[See list](#detailed-metrics)", unsafe_allow_html=True)
@@ -337,6 +304,7 @@ st.markdown('<a id="detailed-metrics"></a>', unsafe_allow_html=True)
 
 with st.expander("All Policies"):
     st.write(f"Found {total_policies} policy names:")
+    # Each policy is shown as a link
     for pol_id, (pol_name, owner, proj) in sorted(policy_info.items(), key=lambda x: x[1][0]):
         link = build_domino_link(owner=owner, project_name=proj, artifact="policy", policy_id=pol_id)
         st.markdown(f"- <a href='{link}' target='_blank'>{pol_name}</a>", unsafe_allow_html=True)
@@ -344,6 +312,7 @@ with st.expander("All Policies"):
 with st.expander("All Bundles"):
     st.write(f"Found {total_bundles} total bundles:")
     for b in bundles:
+        # Each bundle name as link to bundle evidence page
         owner = b.get("projectOwner", "unknown_user")
         proj = b.get("projectName", "UNKNOWN")
         link = build_domino_link(owner=owner, project_name=proj, artifact="bundleEvidence", bundle_id=b.get("id", ""), policy_id=b.get("policyId", ""))
@@ -392,12 +361,9 @@ st.markdown("---")
 st.header("Policies Adoption")
 st.markdown('<a id="policies-adoption"></a>', unsafe_allow_html=True)
 
-policies_dict = { b.get("policyId"): b.get("policyName") for b in bundles if b.get("policyId") }
-if policies_dict:
-    for policy_id, policy_name in policies_dict.items():
-        # Apply global policy filter
-        if selected_policy != "All" and policy_name != selected_policy:
-            continue
+policies = { b.get("policyId"): b.get("policyName") for b in bundles if b.get("policyId") }
+if policies:
+    for policy_id, policy_name in policies.items():
         st.subheader(f"Policy: {policy_name}")
         policy_details = fetch_policy_details(policy_id)
         if policy_details:
@@ -407,8 +373,7 @@ if policies_dict:
                 for bundle in bundles:
                     if bundle.get("policyId") == policy_id:
                         bundle_data_per_stage[bundle.get("stage", "Unknown Stage")].append(bundle)
-                fig = plot_policy_stages(policy_name, stages, bundle_data_per_stage)
-                st.pyplot(fig)
+                # For each stage, list bundles as clickable links.
                 for stage_name, items in bundle_data_per_stage.items():
                     st.write(f"- **Stage: {stage_name}** ({len(items)})")
                     with st.expander(f"View Bundles in {stage_name}"):
@@ -425,25 +390,35 @@ else:
     st.info("No policies found.")
 
 # ----------------------------------------------------
-#  GOVERNED BUNDLES DETAILS SECTION (TABLE)
+#  GOVERNED BUNDLES DETAILS
 # ----------------------------------------------------
 st.markdown("---")
 st.header("Governed Bundles Details (Table)")
 st.markdown('<a id="governed-bundles-details-table"></a>', unsafe_allow_html=True)
 
-# Filter the governed bundles based on global filters
-filtered_bundles = [
-    b for b in sorted(
-        governed_bundles,
-        key=lambda b: any(t["bundle_name"] == b.get("name", "") for t in approval_tasks),
-        reverse=True
-    )
-    if (selected_policy == "All" or b.get("policyName") == selected_policy)
-       and (selected_project == "All" or b.get("projectName") == selected_project)
-]
+sorted_bundles = sorted(
+    governed_bundles,
+    key=lambda b: any(t["bundle_name"] == b.get("name", "") for t in approval_tasks),
+    reverse=True
+)
+
+if show_debug:
+    st.subheader("Bundles Debug Info")
+    for i, bundle in enumerate(sorted_bundles, start=1):
+        st.markdown(f"**Bundle #{i}:**")
+        st.write(f"- **ID:** {bundle.get('id')}")
+        st.write(f"- **Name:** {bundle.get('name')}")
+        st.write(f"- **Project Name:** {bundle.get('projectName')}")
+        st.write(f"- **Project Owner:** {bundle.get('projectOwner')}")
+        st.write(f"- **Policy ID:** {bundle.get('policyId')}")
+        st.write(f"- **Policy Name:** {bundle.get('policyName')}")
+        st.write(f"- **Stage:** {bundle.get('stage')}")
+        st.write(f"- **State:** {bundle.get('state')}")
+        st.write("**Full JSON:**")
+        st.json(bundle)
 
 table_rows = []
-for bundle in filtered_bundles:
+for bundle in sorted_bundles:
     b_name = bundle.get("name", "Unnamed Bundle")
     b_id = bundle.get("id", "")
     pol_id = bundle.get("policyId", "")
@@ -457,6 +432,7 @@ for bundle in filtered_bundles:
         proj_owner = bundle.get("createdBy", {}).get("userName", "unknown_user")
     evidence_link = build_domino_link(owner=proj_owner, project_name=proj_name, artifact="bundleEvidence", bundle_id=b_id, policy_id=pol_id)
     bundle_html = f'<a href="{evidence_link}" target="_blank">{b_name}</a>'
+    # Policy name as link:
     policy_link = build_domino_link(owner=proj_owner, project_name=proj_name, artifact="policy", policy_id=pol_id)
     policy_html = f'<a href="{policy_link}" target="_blank">{pol_name}</a>'
     rel_tasks = [t for t in approval_tasks if t["bundle_name"] == b_name]
@@ -480,7 +456,7 @@ for bundle in filtered_bundles:
     table_rows.append({
         "Bundle": bundle_html,
         "Status": status,
-        "Policy": policy_html,
+        "Policy Name": policy_html,
         "Stage": stage,
         "Tasks": tasks_html,
         "Model Versions": mv_html
@@ -490,62 +466,51 @@ df_bundles = pd.DataFrame(table_rows)
 st.write(df_bundles.to_html(escape=False), unsafe_allow_html=True)
 
 # ----------------------------------------------------
-#  REGISTERED MODELS SECTION (TABLE)
+#  REGISTERED MODELS TABLE
 # ----------------------------------------------------
 st.markdown("---")
 st.header("Registered Models")
 st.markdown('<a id="registered-models"></a>', unsafe_allow_html=True)
 
-model_rows = []
-for m in models:
-    mod_name = m.get("name", "Unnamed Model")
-    p_name = m.get("project", {}).get("name", "Unknown Project")
-    owner = m.get("ownerUsername", "Unknown Owner")
-    # Apply project filter for models
-    if selected_project != "All" and p_name != selected_project:
-        continue
-    model_registry_url = build_domino_link(owner=owner, project_name=p_name, artifact="model-registry", model_name=mod_name)
-    model_name_html = f'<a href="{model_registry_url}" target="_blank">{mod_name}</a>'
-    model_rows.append({
-        "Name": model_name_html,
-        "Project": p_name,
-        "Owner": owner
-    })
-df_models = pd.DataFrame(model_rows)
-st.write(df_models.to_html(escape=False, index=False), unsafe_allow_html=True)
-
-# ----------------------------------------------------
-#  BUNDLES BY PROJECT SECTION (TABLE)
-# ----------------------------------------------------
-st.markdown("---")
-st.header("Bundles by Project")
-st.markdown('<a id="bundles-by-project"></a>', unsafe_allow_html=True)
-
-bundle_rows = []
-for b in bundles:
-    proj = b.get("projectName", "UNKNOWN")
-    bundle_name = b.get("name", "Unnamed Bundle")
-    state = b.get("state", "Unknown")
-    policy = b.get("policyName", "None")
-    stage = b.get("stage", "Unknown")
-    owner = b.get("projectOwner", "unknown_user")
-    link = build_domino_link(owner=owner, project_name=proj, artifact="bundleEvidence", bundle_id=b.get("id", ""), policy_id=b.get("policyId", ""))
-    link_html = f'<a href="{link}" target="_blank">View</a>'
-    bundle_rows.append({
-         "Project": proj,
-         "Bundle Name": bundle_name,
-         "State": state,
-         "Policy": policy,
-         "Stage": stage,
-         "Link": link_html
-    })
-
-# Apply global filters on bundles by project table
-filtered_bundle_rows = [
-    row for row in bundle_rows 
-    if (selected_project == "All" or row["Project"] == selected_project)
-       and (selected_policy == "All" or row["Policy"] == selected_policy)
-]
-
-df_bundles_project = pd.DataFrame(filtered_bundle_rows)
-st.write(df_bundles_project.to_html(escape=False, index=False), unsafe_allow_html=True)
+if models:
+    st.write(f"Total Registered Models: {len(models)}")
+    model_to_bundles = defaultdict(list)
+    for b in governed_bundles:
+        b_id = b.get("id", "")
+        b_n = b.get("name", "Unnamed Bundle")
+        p_owner = b.get("projectOwner", "unknown_user")
+        p_name = b.get("projectName", "UNKNOWN")
+        pol_id = b.get("policyId", "")
+        link = build_domino_link(owner=p_owner, project_name=p_name, artifact="bundleEvidence", bundle_id=b_id, policy_id=pol_id)
+        for att in b.get("attachments", []):
+            if att.get("type") == "ModelVersion":
+                ident = att.get("identifier", {})
+                mod_name = ident.get("name")
+                if mod_name:
+                    model_to_bundles[mod_name].append((b_n, link))
+    model_rows = []
+    for m in models:
+        mod_name = m.get("name", "Unnamed Model")
+        p_name = m.get("project", {}).get("name", "Unknown Project")
+        owner = m.get("ownerUsername", "Unknown Owner")
+        model_registry_url = build_domino_link(owner=owner, project_name=p_name, artifact="model-registry", model_name=mod_name)
+        model_name_html = f'<a href="{model_registry_url}" target="_blank">{mod_name}</a>'
+        if mod_name in model_to_bundles:
+            items = model_to_bundles[mod_name]
+            bul = []
+            for (bn, bn_link) in items:
+                safe_bn = bn.replace("<", "&lt;").replace(">", "&gt;")
+                bul.append(f'<li><a href="{bn_link}" target="_blank">{safe_bn}</a></li>')
+            bundles_html = f"<ul>{''.join(bul)}</ul>"
+        else:
+            bundles_html = ""
+        model_rows.append({
+            "Name": model_name_html,
+            "Project": p_name,
+            "Owner": owner,
+            "Bundles": bundles_html
+        })
+    df_models = pd.DataFrame(model_rows)
+    st.write(df_models.to_html(escape=False), unsafe_allow_html=True)
+else:
+    st.warning("No registered models found.")
