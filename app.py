@@ -159,24 +159,26 @@ def fetch_registered_models():
 @st.cache_data
 def fetch_project_details(project_id):
     try:
-        # First try the v4 endpoint
-        resp = api_call("GET", f"/v4/projects/{project_id}")
-        if resp.status_code == 200:
-            return resp.json()
-        
-        # If that fails, try the v1 endpoint
-        resp = api_call("GET", f"/api/projects/v1/projects/{project_id}")
-        if resp.status_code == 200:
-            return resp.json()
-        
-        # If both fail, try the workspace endpoint
+        # Try workspace endpoint first as it seems more reliable
         resp = api_call("GET", f"/api/workspaces/v1/workspaces/{project_id}")
+        st.write(f"Project {project_id} workspace response: {resp.status_code}")
         if resp.status_code == 200:
-            return resp.json()
+            data = resp.json()
+            st.write(f"Workspace data: {data}")
+            return data
+
+        # If that fails, try the projects endpoint
+        resp = api_call("GET", f"/api/projects/v1/projects/{project_id}")
+        st.write(f"Project {project_id} v1 response: {resp.status_code}")
+        if resp.status_code == 200:
+            data = resp.json()
+            st.write(f"Project data: {data}")
+            return data
             
+        st.error(f"All project detail endpoints failed for {project_id}")
         return None
     except Exception as e:
-        st.error(f"Error fetching project details: {e}")
+        st.error(f"Error fetching project details for {project_id}: {e}")
         return None
 
 def build_domino_link(owner: str, project_name: str, artifact: str = "overview",
@@ -250,9 +252,9 @@ for proj in all_projects:
 for b in bundles:
     pid = b.get("projectId")
     created_by = b.get("createdBy", {})
-    b["projectOwner"] = created_by.get("userName", "unknown_user")
+    owner = created_by.get("userName", "unknown_user")
+    b["projectOwner"] = owner
     
-    # Get project details directly for each project
     if pid:
         project_details = fetch_project_details(pid)
         if project_details:
@@ -262,12 +264,15 @@ for b in bundles:
                    project_details.get("workspaceName"))
             if name:
                 b["projectName"] = name
+                st.write(f"Found project name '{name}' for project {pid}")
             else:
-                st.error(f"Could not find project name in response: {project_details}")
+                st.error(f"Could not find project name in response for {pid}: {project_details}")
                 b["projectName"] = "UNKNOWN"
         else:
+            st.error(f"No project details found for {pid}")
             b["projectName"] = "UNKNOWN"
     else:
+        st.error(f"No project ID found in bundle {b.get('name', 'unnamed')}")
         b["projectName"] = "UNKNOWN"
 
 # ----------------------------------------------------
