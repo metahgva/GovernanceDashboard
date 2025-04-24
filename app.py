@@ -159,11 +159,24 @@ def fetch_registered_models():
 @st.cache_data
 def fetch_project_details(project_id):
     try:
+        # First try the v4 endpoint
         resp = api_call("GET", f"/v4/projects/{project_id}")
         if resp.status_code == 200:
             return resp.json()
+        
+        # If that fails, try the v1 endpoint
+        resp = api_call("GET", f"/api/projects/v1/projects/{project_id}")
+        if resp.status_code == 200:
+            return resp.json()
+        
+        # If both fail, try the workspace endpoint
+        resp = api_call("GET", f"/api/workspaces/v1/workspaces/{project_id}")
+        if resp.status_code == 200:
+            return resp.json()
+            
         return None
-    except Exception:
+    except Exception as e:
+        st.error(f"Error fetching project details: {e}")
         return None
 
 def build_domino_link(owner: str, project_name: str, artifact: str = "overview",
@@ -243,7 +256,15 @@ for b in bundles:
     if pid:
         project_details = fetch_project_details(pid)
         if project_details:
-            b["projectName"] = project_details.get("name", "UNKNOWN")
+            # Try different possible locations for the name
+            name = (project_details.get("name") or 
+                   project_details.get("projectName") or 
+                   project_details.get("workspaceName"))
+            if name:
+                b["projectName"] = name
+            else:
+                st.error(f"Could not find project name in response: {project_details}")
+                b["projectName"] = "UNKNOWN"
         else:
             b["projectName"] = "UNKNOWN"
     else:
