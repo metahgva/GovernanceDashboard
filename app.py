@@ -229,10 +229,12 @@ for b in bundles:
     if pid in project_map:
         p_obj = project_map[pid]
         b["projectName"] = p_obj.get("name", "Unnamed Project")
-        b["projectOwner"] = p_obj.get("ownerUsername", "unknown_user")
     else:
         b["projectName"] = "UNKNOWN"
-        b["projectOwner"] = "unknown_user"
+    
+    # Use createdBy.userName instead of projectOwner
+    created_by = b.get("createdBy", {})
+    b["projectOwner"] = created_by.get("userName", "unknown_user")
 
 # ----------------------------------------------------
 #   SINGLE-SELECT GLOBAL FILTERS WITH "ALL" OPTION
