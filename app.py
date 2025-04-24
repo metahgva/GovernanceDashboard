@@ -255,27 +255,29 @@ for proj in all_projects:
 
 # Annotate bundles with project data
 for b in bundles:
-    pid = b.get("projectId")
     created_by = b.get("createdBy", {})
     owner = created_by.get("userName", "unknown_user")
     b["projectOwner"] = owner
     
-    # Get project details using v4 API
-    if pid:
-        project_details = fetch_project_details(pid)
-        if project_details:
-            name = project_details.get("name")
-            if name:
-                b["projectName"] = name
-                st.write(f"Found project name '{name}' for project {pid}")
+    # Get project name from the bundle's project ID
+    pid = b.get("projectId")
+    if pid and owner:
+        # Try to get project name from the bundle's project ID
+        # Format: first part of project ID
+        try:
+            # Get first part of the project ID (before any special characters)
+            project_name = pid.split('-')[0]
+            if project_name:
+                b["projectName"] = project_name
+                st.write(f"Using project name '{project_name}' for project {pid}")
             else:
-                st.error(f"No project name found in response for {pid}")
+                st.error(f"Could not extract project name from ID {pid}")
                 b["projectName"] = "UNKNOWN"
-        else:
-            st.error(f"No project details found for {pid}")
+        except Exception as e:
+            st.error(f"Error extracting project name from ID {pid}: {e}")
             b["projectName"] = "UNKNOWN"
     else:
-        st.error(f"No project ID found in bundle {b.get('name', 'unnamed')}")
+        st.error(f"Missing project ID or owner for bundle {b.get('name', 'unnamed')}")
         b["projectName"] = "UNKNOWN"
 
 # ----------------------------------------------------
