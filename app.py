@@ -296,24 +296,13 @@ for b in bundles:
     owner = created_by.get("userName", "unknown_user")
     b["projectOwner"] = owner
     
-    # Get full bundle details to get project info
-    bundle_id = b.get("id")
-    if bundle_id:
-        bundle_details = fetch_bundle_details(bundle_id)
-        if bundle_details and bundle_details.get("project"):
-            project = bundle_details.get("project", {})
-            name = project.get("name")
-            if name:
-                b["projectName"] = name
-                st.write(f"Found project name '{name}' from bundle details")
-            else:
-                st.error(f"No project name in bundle details for {bundle_id}")
-                b["projectName"] = "UNKNOWN"
-        else:
-            st.error(f"No bundle details or project info found for {bundle_id}")
-            b["projectName"] = "UNKNOWN"
+    # Get project name directly from bundle data
+    project_name = b.get("projectName")
+    if project_name:
+        b["projectName"] = project_name
+        st.write(f"Using project name '{project_name}' from bundle data")
     else:
-        st.error(f"No bundle ID found")
+        st.error(f"No project name found in bundle {b.get('name', 'unnamed')}")
         b["projectName"] = "UNKNOWN"
 
 # ----------------------------------------------------
