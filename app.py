@@ -117,6 +117,9 @@ def fetch_all_projects():
 def fetch_tasks_for_project(project_id):
     try:
         resp = api_call("GET", f"/api/projects/v1/projects/{project_id}/goals")
+        if resp.status_code == 403:
+            # Silently handle permission errors
+            return []
         if resp.status_code != 200:
             st.error(f"Error fetching tasks for project {project_id}: {resp.status_code}")
             return []
@@ -401,7 +404,7 @@ st.markdown('<a id="detailed-metrics"></a>', unsafe_allow_html=True)
 
 with st.expander("All Policies"):
     pol_ids = {b.get("policyId") for b in bundles if b.get("policyId")}
-    st.write(f"Found {len(pol_ids)} unique policy IDs (unfiltered).")
+    unique_policies = {}
     for b in bundles:
         pid = b.get("policyId")
         if not pid:
@@ -409,8 +412,22 @@ with st.expander("All Policies"):
         pol_name = b.get("policyName", "Unknown")
         owner = b.get("projectOwner", "unknown_user")
         proj = b.get("projectName", "UNKNOWN")
-        link = build_domino_link(owner=owner, project_name=proj, artifact="policy", policy_id=pid)
-        st.markdown(f"- <a href='{link}' target='_blank'>{pol_name}</a>", unsafe_allow_html=True)
+        if pid not in unique_policies:
+            unique_policies[pid] = {
+                "name": pol_name,
+                "owner": owner,
+                "project": proj
+            }
+    
+    st.write(f"Found {len(unique_policies)} unique policy IDs.")
+    for pid, policy in unique_policies.items():
+        link = build_domino_link(
+            owner=policy["owner"],
+            project_name=policy["project"],
+            artifact="policy",
+            policy_id=pid
+        )
+        st.markdown(f"- <a href='{link}' target='_blank'>{policy['name']}</a>", unsafe_allow_html=True)
 
 with st.expander("All Bundles"):
     st.write(f"Found {len(bundles)} total bundles (unfiltered).")
