@@ -156,6 +156,16 @@ def fetch_registered_models():
         st.error(f"Error while fetching registered models: {e}")
         return []
 
+@st.cache_data
+def fetch_project_details(project_id):
+    try:
+        resp = api_call("GET", f"/v4/projects/{project_id}")
+        if resp.status_code == 200:
+            return resp.json()
+        return None
+    except Exception:
+        return None
+
 def build_domino_link(owner: str, project_name: str, artifact: str = "overview",
                       model_name: str = "", version: str = "",
                       bundle_id: str = "", policy_id: str = "") -> str:
@@ -226,15 +236,18 @@ for proj in all_projects:
 # Annotate bundles with project data
 for b in bundles:
     pid = b.get("projectId")
-    if pid in project_map:
-        p_obj = project_map[pid]
-        b["projectName"] = p_obj.get("name", "Unnamed Project")
-    else:
-        b["projectName"] = "UNKNOWN"
-    
-    # Use createdBy.userName instead of projectOwner
     created_by = b.get("createdBy", {})
     b["projectOwner"] = created_by.get("userName", "unknown_user")
+    
+    # Get project details directly for each project
+    if pid:
+        project_details = fetch_project_details(pid)
+        if project_details:
+            b["projectName"] = project_details.get("name", "UNKNOWN")
+        else:
+            b["projectName"] = "UNKNOWN"
+    else:
+        b["projectName"] = "UNKNOWN"
 
 # ----------------------------------------------------
 #   SINGLE-SELECT GLOBAL FILTERS WITH "ALL" OPTION
@@ -577,7 +590,7 @@ if show_debug:
 
 gov_table_rows = []
 for b in governed_bundles:
-    owner = b.get("projectOwner", "unknown_user")
+    owner = b.get("createdBy", {}).get("userName", "unknown_user")
     proj = b.get("projectName", "UNKNOWN")
     b_name = b.get("name", "Unnamed")
     b_id = b.get("id", "")
@@ -661,12 +674,12 @@ st.markdown('<a id="bundles-by-project"></a>', unsafe_allow_html=True)
 
 bundle_rows = []
 for b in filtered_bundles:
+    owner = b.get("createdBy", {}).get("userName", "unknown_user")
     proj = b.get("projectName", "UNKNOWN")
     b_name = b.get("name", "Unnamed Bundle")
     state = b.get("state", "Unknown")
     pol_name = b.get("policyName", "None")
     stage = b.get("stage", "Unknown")
-    owner = b.get("projectOwner", "unknown_user")
     url = build_domino_link(owner=owner, project_name=proj,
                             artifact="bundleEvidence",
                             bundle_id=b.get("id", ""),
