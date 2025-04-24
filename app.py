@@ -171,6 +171,21 @@ def fetch_bundle_evidence(bundle_id, policy_id):
         st.error(f"Error fetching bundle evidence for {bundle_id}: {e}")
         return None
 
+@st.cache_data
+def fetch_project_details(project_id):
+    try:
+        # Use the v4/projects endpoint
+        resp = api_call("GET", f"/v4/projects/{project_id}")
+        st.write(f"Project {project_id} v4 response: {resp.status_code}")
+        if resp.status_code == 200:
+            data = resp.json()
+            st.write(f"Project data: {data}")
+            return data
+        return None
+    except Exception as e:
+        st.error(f"Error fetching project details for {project_id}: {e}")
+        return None
+
 def build_domino_link(owner: str, project_name: str, artifact: str = "overview",
                       model_name: str = "", version: str = "",
                       bundle_id: str = "", policy_id: str = "") -> str:
@@ -240,29 +255,27 @@ for proj in all_projects:
 
 # Annotate bundles with project data
 for b in bundles:
+    pid = b.get("projectId")
     created_by = b.get("createdBy", {})
     owner = created_by.get("userName", "unknown_user")
     b["projectOwner"] = owner
     
-    # Try to get project name from bundle evidence
-    bundle_id = b.get("id")
-    policy_id = b.get("policyId")
-    if bundle_id and policy_id:
-        evidence = fetch_bundle_evidence(bundle_id, policy_id)
-        if evidence and evidence.get("project"):
-            project = evidence.get("project", {})
-            name = project.get("name")
+    # Get project details using v4 API
+    if pid:
+        project_details = fetch_project_details(pid)
+        if project_details:
+            name = project_details.get("name")
             if name:
                 b["projectName"] = name
-                st.write(f"Found project name '{name}' from bundle evidence")
+                st.write(f"Found project name '{name}' for project {pid}")
             else:
-                st.error(f"No project name in bundle evidence for {bundle_id}")
+                st.error(f"No project name found in response for {pid}")
                 b["projectName"] = "UNKNOWN"
         else:
-            st.error(f"No bundle evidence found for {bundle_id}")
+            st.error(f"No project details found for {pid}")
             b["projectName"] = "UNKNOWN"
     else:
-        st.error(f"Missing bundle ID or policy ID for bundle {b.get('name', 'unnamed')}")
+        st.error(f"No project ID found in bundle {b.get('name', 'unnamed')}")
         b["projectName"] = "UNKNOWN"
 
 # ----------------------------------------------------
