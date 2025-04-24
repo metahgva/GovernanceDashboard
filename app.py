@@ -300,7 +300,6 @@ for b in bundles:
     project_name = b.get("projectName")
     if project_name:
         b["projectName"] = project_name
-        st.write(f"Using project name '{project_name}' from bundle data")
     else:
         st.error(f"No project name found in bundle {b.get('name', 'unnamed')}")
         b["projectName"] = "UNKNOWN"
