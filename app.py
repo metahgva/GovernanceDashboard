@@ -76,7 +76,7 @@ show_debug = st.sidebar.checkbox("Show Bundle Debug Info", value=False)
 # ----------------------------------------------------
 if st.button("Refresh Data"):
     st.cache_data.clear()
-    st.experimental_rerun()
+    st.rerun()
 
 # ----------------------------------------------------
 #   CONSOLIDATED API CALL HELPER
@@ -173,7 +173,7 @@ def build_domino_link(owner: str, project_name: str, artifact: str = "overview",
     elif artifact == "bundleEvidence":
         return f"{base}/u/{enc_owner}/{enc_project}/governance/bundle/{bundle_id}/policy/{policy_id}/evidence"
     elif artifact == "policy":
-        return f"{base}/u/{enc_owner}/{enc_project}/governance/policy/{policy_id}"
+        return f"{base}/governance/policy/{policy_id}"
     return f"{base}/u/{enc_owner}/{enc_project}/overview"
 
 def parse_task_description(description):
