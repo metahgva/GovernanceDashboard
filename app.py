@@ -53,7 +53,7 @@ st.markdown(
 #   ENV CONFIG & CONSTANTS
 # ----------------------------------------------------
 API_HOST = os.getenv("API_HOST", "https://dev.qbe.domino.tech")
-API_KEY = os.getenv("API_KEY", "63e426d6d476f2b2798e6d66c2221bcbf53edcd95988cb18d67e4cf7c8b06043")
+API_KEY = os.getenv("API_KEY", "2f8886b65da3470bb8abddc45101db759acd1d6850f37018dcceccbb2c5b7fa7")
 
 st.title("Governance Dashboard")
 
